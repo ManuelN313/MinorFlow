@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>gem5 Pipeline Viewer — CVA6</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#18181a;--bg2:#222224;--bg3:#2a2a2d;--bg4:#313135;
+  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.14);
+  --text:#e4e2dc;--text2:#a0a09a;--text3:#505050;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--bg);color:var(--text);font-size:13px;
+  overflow:hidden;height:100vh;display:flex;flex-direction:column;}
+
+/* ── top bar ── */
+#top{height:42px;background:var(--bg2);border-bottom:0.5px solid var(--border2);
+  display:flex;align-items:center;gap:10px;padding:0 14px;flex-shrink:0;}
+#top h1{font-size:12px;font-weight:500;white-space:nowrap;color:var(--text2);}
+.vsep{width:0.5px;height:18px;background:var(--border2);}
+.tbtn{padding:3px 9px;background:var(--bg3);border:0.5px solid var(--border2);
+  border-radius:5px;font-size:11px;cursor:pointer;color:var(--text2);}
+.tbtn:hover{background:var(--bg4);color:var(--text);}
+.tlbl{font-size:11px;color:var(--text3);}
+#zoom-val{font-size:11px;color:#f0a030;font-weight:500;min-width:28px;}
+input[type=range]{width:70px;accent-color:#3ecf9a;cursor:pointer;}
+input[type=file]{display:none;}
+input[type=number]{width:42px;background:var(--bg3);border:0.5px solid var(--border2);
+  border-radius:4px;padding:2px 4px;color:var(--text);font-size:11px;}
+label.chk{font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px;cursor:pointer;}
+
+/* ── drop zone ── */
+#dropzone{flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:8px;color:var(--text3);cursor:pointer;
+  border:1.5px dashed var(--border2);margin:20px;border-radius:8px;}
+#dropzone.ov{border-color:#3ecf9a;color:#3ecf9a;}
+#dropzone h2{font-size:13px;color:var(--text2);}
+
+/* ── main view ── */
+#view{display:none;flex:1;overflow:hidden;flex-direction:column;}
+
+/* legend */
+#leg{height:24px;background:var(--bg2);border-bottom:0.5px solid var(--border);
+  display:flex;align-items:center;gap:10px;padding:0 14px;flex-shrink:0;}
+.li{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text3);cursor:help;}
+.ld{width:10px;height:10px;border-radius:2px;}
+
+/* canvas area */
+#area{display:flex;flex:1;overflow:hidden;}
+
+/* label panel */
+#lblpanel{width:210px;flex-shrink:0;overflow:hidden;
+  background:var(--bg2);border-right:0.5px solid var(--border2);position:relative;}
+#lblcanvas{position:absolute;top:0;left:0;}
+
+/* timeline panel */
+#tlpanel{flex:1;overflow:hidden;position:relative;}
+/* phantom div drives the scrollbars */
+#phantom{position:absolute;top:0;left:0;pointer-events:none;}
+#tlcanvas{position:absolute;top:0;left:0;}
+#scroller{position:absolute;inset:0;overflow:scroll;}
+#scroller-inner{} /* sized to phantom */
+
+/* ruler */
+#ruler{height:18px;background:var(--bg3);border-bottom:0.5px solid var(--border2);
+  flex-shrink:0;position:relative;overflow:hidden;margin-left:210px;}
+#rulercanvas{position:absolute;top:0;left:0;}
+
+/* status bar */
+#status{height:21px;background:var(--bg3);border-top:0.5px solid var(--border);
+  display:flex;align-items:center;padding:0 12px;gap:14px;flex-shrink:0;}
+#status span{font-size:10px;color:var(--text3);}
+#status .hi{color:var(--text2);}
+
+/* tooltip */
+#tt{position:fixed;background:var(--bg2);border:0.5px solid var(--border2);
+  border-radius:6px;padding:8px 12px;font-size:11px;line-height:1.8;
+  pointer-events:none;z-index:200;display:none;max-width:340px;}
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>💻 gem5 Pipeline Viewer</h1>
+  <div class="vsep"></div>
+  <button class="tbtn" onclick="document.getElementById('fi').click()">📂 Abrir traza</button>
+  <input type="file" id="fi" accept=".txt,.log">
+  <div class="vsep"></div>
+  <span class="tlbl">Zoom X</span>
+  <input type="range" id="zx" min="1" max="80" value="4" oninput="setZoom()" style="width:90px">
+  <span id="zoom-val">4px</span>
+  <div class="vsep"></div>
+  <span class="tlbl">MHz</span>
+  <input type="number" id="mhz" value="50">
+</div>
+
+<!-- drop zone -->
+<div id="dropzone"
+  ondragover="event.preventDefault();this.classList.add('ov')"
+  ondragleave="this.classList.remove('ov')"
+  ondrop="event.preventDefault();this.classList.remove('ov');loadF(event.dataTransfer.files[0])"
+  onclick="document.getElementById('fi').click()">
+  <h2>Arrastrá o hacé click para cargar la traza de gem5</h2>
+  <p style="font-size:11px">Flags recomendadas: --debug-flags=Minor,MinorTrace,MinorTiming,ExecAll,Fetch,Decode,Scoreboard</p>
+  <p style="font-size:10px;margin-top:4px">Teclas: + / − para zoom · flechas para navegar</p>
+</div>
+
+<!-- main view (hidden until file loaded) -->
+<div id="view">
+  <div id="leg"></div>
+  <div id="ruler"><canvas id="rulercanvas"></canvas></div>
+  <div id="area">
+    <div id="lblpanel"><canvas id="lblcanvas"></canvas></div>
+    <div id="tlpanel">
+      <canvas id="tlcanvas"></canvas>
+      <!-- invisible scroller to drive scroll events -->
+      <div id="scroller"><div id="scroller-inner"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="status">
+  <span>Ciclo: <span class="hi" id="s-c">—</span></span>
+  <span>Instr: <span class="hi" id="s-i">—</span></span>
+  <span>FU: <span class="hi" id="s-f">—</span></span>
+  <span>PC: <span class="hi" id="s-p">—</span></span>
+  <span style="margin-left:auto">Visible: <span class="hi" id="s-vis">—</span> / <span class="hi" id="s-tot">—</span></span>
+</div>
+
+<div id="tt"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// CONSTANTS & STATE
+// ════════════════════════════════════════════════════════════════════
+const COL = {
+  f1:'#1e4a7a', f1miss:'#c03030', f1stall:'#8a2020', f2:'#163a6a', f2buf:'#0e2a50',
+  dec:'#4a2a80',
+  decbuf:'#352060',
+  dtoe: '#1a4040',
+  exbuf:'#1a3050',
+  int:'#1a6040', branch:'#6a3090', fp:'#106060', mem:'#5a4010',
+  wb:'#1a5050', cm:'#1a5535',
+  memreq: '#b08020', dcmiss: '#d03030',
+  sbbuf:  '#c07020',
+  flushed: '#3a1515',  // dimmed red for flushed instructions
+};
+
+// Pipeline inter-stage delays (configurable, must match the gem5 config)
+// fetch1ToFetch2ForwardDelay + fetch2ToDecodeForwardDelay + decodeToExecuteForwardDelay
+let PIPE_F1_F2  = 1;  // fetch1ToFetch2ForwardDelay
+let PIPE_F2_DEC = 1;  // fetch2ToDecodeForwardDelay
+let PIPE_DEC_EX = 1;  // decodeToExecuteForwardDelay
+const LBL_W   = 210;
+const RULER_H = 18;
+const MIN_CELL = 1;
+const MAX_CELL = 80;
+
+// Row height scales with zoom so text fits comfortably
+function getRowH() {
+  return cellW >= 40 ? 26 : cellW >= 20 ? 20 : 15;
+}
+
+let allInstrs = [];          // all parsed instructions
+let vis = [];                // filtered subset (current view)
+let cellW = 4;               // px per cycle
+let scrollX = 0;             // horizontal scroll (cycles from cMin)
+let scrollY = 0;             // vertical scroll (rows from top)
+let cMin = 0, cMax = 0;
+
+// ════════════════════════════════════════════════════════════════════
+// FILE I/O
+// ════════════════════════════════════════════════════════════════════
+document.getElementById('fi').addEventListener('change', e => {
+  const f = e.target.files[0]; if (f) loadF(f);
+});
+
+function loadF(f) {
+  const r = new FileReader();
+  r.onload = ev => parse(ev.target.result);
+  r.readAsText(f);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PARSER
+// ════════════════════════════════════════════════════════════════════
+function parse(text) {
+  const mhz = parseInt(document.getElementById('mhz').value) || 50;
+  const TPC = Math.round(1_000_000 / mhz);
+
+  const fetch1Map   = {};   // line_seq  → cycle (from MinorLine response)
+  const fetch1Req   = {};   // line_seq  → cycle (from "Issued fetch request to memory")
+  const fetch2Map   = {};   // fetchSeqNum → cycle (from 'decoder inst')
+  const executeMap  = {};   // exec_seq  → data  (from MinorInst OR Issuing inst)
+  const decodeMap   = {};   // execSeq → cycle (from 'Passing on inst' — real decode)
+  const scoreboardMap = {}; // execSeq → returnCycle (from 'Marking up inst')
+  const issueFirst  = {};   // exec_seq  → first cycle "Trying to issue"
+  const issueOk     = {};   // exec_seq  → cycle "Issuing inst"
+  const issueFU     = {};   // exec_seq  → FU index
+  const commitList  = [];   // {cycle, pc}
+
+  // Cache tracking — cycle-based
+  const icMissCycles = new Set();
+  const icHitCycles  = new Set();
+  const lsqEvents   = {};
+  const dcacheByTick = {};
+  const storeBufEvents = {};
+
+  // Branch tracking
+  const branchEvents = {};  // execSeq → {cycle, type}
+  const discardMap   = {};  // execSeq → cycle (when instruction was discarded/flushed)
+
+  let hasMinorExecute = false;
+
+  for (const line of text.split('\n')) {
+    const l = line.trim(); if (!l) continue;
+    const tm = l.match(/^\s*(\d+):/); if (!tm) continue;
+    const cycle = Math.round(parseInt(tm[1]) / TPC);
+
+    // Fetch1 MinorLine  id=stream/fetchId/lineSeq  (response arrived)
+    const ml = l.match(/fetch1: MinorLine: id=\S+\/\S+\/(\d+)\s/);
+    if (ml) {
+      const s = +ml[1];
+      if (!(s in fetch1Map)) fetch1Map[s] = cycle;
+      continue;
+    }
+
+    // Fetch1 "Issued fetch request to memory" — same tick as icache access
+    const fr = l.match(/fetch1: Issued fetch request to memory: (\S+)/);
+    if (fr) {
+      const m = fr[1].match(/\d+\/\S+\/(\d+)/);
+      if (m) { const lseq = +m[1]; if (!(lseq in fetch1Req)) fetch1Req[lseq] = cycle; }
+      continue;
+    }
+
+    // ICache access: hit or miss — track by cycle
+    const ic = l.match(/l1icaches: access for \w+ \[[0-9a-f]+:[0-9a-f]+\] IF (miss|hit)/);
+    if (ic) {
+      if (ic[1] === 'miss') icMissCycles.add(cycle);
+      else icHitCycles.add(cycle);
+      continue;
+    }
+
+    // DCache access: hit or miss — track by cycle
+    const dc = l.match(/l1dcaches: access for \w+ \[[0-9a-f]+:[0-9a-f]+\] (miss|hit)/);
+    if (dc) {
+      dcacheByTick[cycle] = { miss: dc[1] === 'miss' };
+      continue;
+    }
+
+    // LSQ state transitions — these have the execSeq directly
+    const ls = l.match(/lsq: Setting state from (\w+) to (\w+) for request: (\S+) pc:/);
+    if (ls) {
+      const m = ls[3].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
+      if (m) {
+        const eseq = +m[3];
+        if (!(eseq in lsqEvents)) lsqEvents[eseq] = {};
+        const ev = lsqEvents[eseq];
+        if (ls[1] === 'NotIssued' && ls[2] === 'InTranslation') ev.pushCycle = cycle;
+        if (ls[2] === 'RequestIssuing') ev.issueCycle = cycle;
+        if (ls[2] === 'Complete') ev.completeCycle = cycle;
+        if (ls[1] === 'StoreBufferIssuing') ev.isStore = true;
+      }
+      continue;
+    }
+
+    // Store buffer: Pushing store with inst ID
+    const sbp = l.match(/storeBuffer: Pushing store:.*?into store buffer/);
+    if (sbp) {
+      // Next line after push usually has the considering line with ID
+      continue;
+    }
+
+    // Store buffer: Considering request (has ID)
+    const sbc = l.match(/storeBuffer: Considering request: (\S+) pc:/);
+    if (sbc) {
+      const m = sbc[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
+      if (m) {
+        const eseq = +m[3];
+        if (!(eseq in storeBufEvents)) storeBufEvents[eseq] = { pushCycle: cycle, deleteCycle: null };
+      }
+      continue;
+    }
+
+    // Store buffer: Deleting request (has ID)
+    const sbd = l.match(/storeBuffer: Deleting request:.*?(\d+\/\S+\/\d+\/(\d+)\.\d+)/);
+    if (sbd) {
+      const eseq = +sbd[2];
+      if (eseq in storeBufEvents) storeBufEvents[eseq].deleteCycle = cycle;
+      continue;
+    }
+
+    // Fetch2 decoder inst  id=stream/fetchId/lineSeq/fetchSeqNum
+    const f2m = l.match(/fetch2: decoder inst (\S+) pc:/);
+    if (f2m) {
+      const m = f2m[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)/);
+      if (m) {
+        const fseq = +m[3]; // fetchSeqNum == execSeqNum for non-macroops
+        if (!(fseq in fetch2Map)) fetch2Map[fseq] = cycle;
+      }
+      continue;
+    }
+
+    // Execute MinorInst  id=stream/fetchId/lineSeq/execSeq.lat
+    const mi = l.match(
+      /execute: MinorInst: id=\d+\/\S+\/(\d+)\/(\d+)\.\d+\s+addr=(0x[0-9a-f]+)\s+inst="([^"]+)"\s+class=(\w+)\s+flags="([^"]*)"\s+srcRegs=([^ ]*)\s+destRegs=([^ ]*)/
+    );
+    if (mi) {
+      const lineSeq = +mi[1], execSeq = +mi[2];
+      executeMap[execSeq] = {
+        cycle, lineSeq,
+        pc: mi[3], instr: mi[4], fu: mi[5],
+        flags: mi[6], src: mi[7], dest: mi[8],
+        predictedTaken: l.includes('predictedTaken'),
+      };
+      continue;
+    }
+
+    // Scoreboard: "Marking up inst: ID ... returnCycle: N"
+    const sb = l.match(/scoreboard\d+: Marking up inst:\s+(\S+).*returnCycle:\s*(\d+)/);
+    if (sb) {
+      const m = sb[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
+      if (m) {
+        const eseq = +m[3];
+        // Only keep first marking (some instructions may re-mark)
+        if (!(eseq in scoreboardMap)) scoreboardMap[eseq] = +sb[2];
+      }
+      continue;
+    }
+
+    // Decode stage: "Passing on inst: ID pc: ADDR (op)"  — real decode cycle
+    const dp = l.match(/decode: Passing on inst:\s+(\S+)\s+pc:\s+\S+\s+\([^)]+\)/);
+    if (dp) {
+      const m = dp[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)/);
+      if (m) { const eseq = +m[3]; if (!(eseq in decodeMap)) decodeMap[eseq] = cycle; }
+      continue;
+    }
+
+    // MinorExecute: "Trying to issue inst: ID pc: ADDR (op) to FU: N"
+    const ti = l.match(/Trying to issue inst:\s+(\S+)\s+pc:\s+(\S+)\s+\(([^)]+)\)\s+to FU:\s*(\d+)/);
+    if (ti) {
+      const m = ti[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
+      if (m) {
+        const lseq = +m[2], eseq = +m[3];
+        hasMinorExecute = true;
+        if (!(eseq in issueFirst)) issueFirst[eseq] = cycle;
+        if (!(eseq in executeMap)) executeMap[eseq] = {
+          cycle, lineSeq: lseq, pc: ti[2], instr: ti[3], fu: '', src: '', dest: '', flags: ''
+        };
+      }
+      continue;
+    }
+
+    // MinorExecute: "Issuing inst: ID pc: ADDR (op) into FU N"
+    const ii = l.match(/Issuing inst:\s+(\S+)\s+pc:\s+(\S+)\s+\(([^)]+)\)\s+into FU (\d+)/);
+    if (ii) {
+      const m = ii[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
+      if (m) {
+        const lseq = +m[2], eseq = +m[3];
+        if (!(eseq in issueOk)) issueOk[eseq] = cycle;
+        if (!(eseq in issueFU)) issueFU[eseq] = +ii[4]; // FU index
+        if (!(eseq in executeMap)) executeMap[eseq] = {
+          cycle, lineSeq: lseq, pc: ii[2], instr: ii[3], fu: '', src: '', dest: '', flags: ''
+        };
+        // Update execute cycle to actual FU dispatch (more accurate)
+        if (executeMap[eseq]) executeMap[eseq].cycle = cycle;
+      }
+      continue;
+    }
+
+    // Branch stream change: "Changing stream on branch: TYPE target: ADDR ID pc: ADDR (op) ..."
+    const br = l.match(/Changing stream on branch: (\w+) target: \S+ (\S+) pc:/);
+    if (br) {
+      const m = br[2].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
+      if (m) {
+        const eseq = +m[3];
+        if (!(eseq in branchEvents)) branchEvents[eseq] = { cycle, type: br[1] };
+      }
+      continue;
+    }
+
+    // Discarding inst (flushed by stream change / misprediction)
+    const di = l.match(/execute: Discarding inst: (\S+) pc:/);
+    if (di) {
+      const m = di[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
+      if (m) {
+        const eseq = +m[3];
+        if (!(eseq in discardMap)) discardMap[eseq] = cycle;
+      }
+      continue;
+    }
+
+    // Commit  (T0 line)
+    const em = l.match(/T0\s+:\s+(0x[0-9a-f]+)\s+@\S+\s+:\s+(.+?)\s+:\s+(\w+)/);
+    if (em && l.includes('T0')) {
+      commitList.push({ cycle, pc: em[1], instr: em[2].trim(), fu: em[3] });
+    }
+  }
+
+  // Build per-instruction records
+  const commitByPC = {};
+  for (const cm of commitList)
+    (commitByPC[cm.pc] ??= []).push(cm.cycle);
+  const usedIdx = {};
+
+  allInstrs = Object.entries(executeMap)
+    .sort(([a], [b]) => a - b)
+    .map(([seqStr, ex]) => {
+      const seq  = +seqStr;
+      const f1c  = fetch1Map[ex.lineSeq] ?? null;  // Real: from MinorLine
+      const f2c_real = fetch2Map[seq] ?? null;       // Real: from "decoder inst"
+      const tryC = issueFirst[seq] ?? null;          // Real: first "Trying to issue"
+      const issC = issueOk[seq]    ?? null;          // Real: FU dispatch
+      const fuIdx = issueFU[seq]   ?? null;          // FU index
+      const retCyc = scoreboardMap[seq] ?? null;     // Real: scoreboard returnCycle
+
+      // Real decode from 'Passing on inst' (if Decode flag was active)
+      const decc_real = decodeMap[seq] ?? null;
+
+      // f2: prefer real, then estimate from f1
+      const f2est = f1c !== null ? f1c + PIPE_F1_F2 : null;
+      const f2Final = f2c_real ?? f2est;
+
+      // dec: prefer real, then estimate from f2
+      const decEst = f2Final !== null ? f2Final + PIPE_F2_DEC : null;
+      const decFinal = decc_real ?? decEst;
+
+      // Fallback: estimate backwards from execute events
+      const base = tryC ?? issC ?? ex.cycle;
+      const decF = decFinal ?? (base - PIPE_DEC_EX);
+      const f2F  = f2Final  ?? (decF - PIPE_F2_DEC);
+      const f1F  = f1c      ?? (f2F  - PIPE_F1_F2);
+      const dtoF = decF + PIPE_DEC_EX;
+
+      // Commit
+      const pcs  = commitByPC[ex.pc] ?? [];
+      const ui   = usedIdx[ex.pc] ?? 0;
+      usedIdx[ex.pc] = ui + 1;
+      const cmc  = pcs[ui] ?? null;
+
+      // FU dispatch cycle
+      const exFU = issC ?? ex.cycle;
+
+      // FU completion: from scoreboard returnCycle, or ex+1 as fallback
+      const fuDone = retCyc ?? (exFU + 1);
+
+      // ICache: check if this line's fetch request was a miss
+      const fetchReqCyc = fetch1Req[ex.lineSeq] ?? null;
+      const icMiss = fetchReqCyc !== null ? icMissCycles.has(fetchReqCyc) : null;
+
+      // LSQ events for load/store instructions
+      const lsqEvt = lsqEvents[seq] ?? null;
+      const sbEvt  = storeBufEvents[seq] ?? null;
+
+      // DCache: match by the LSQ issue cycle (same tick as dcache access)
+      let dcMiss = null;
+      if (lsqEvt?.issueCycle != null) {
+        const dc = dcacheByTick[lsqEvt.issueCycle];
+        if (dc) dcMiss = dc.miss;
+      }
+
+      return {
+        seq, pc: ex.pc, instr: ex.instr, fu: ex.fu,
+        src: ex.src, dest: ex.dest, flags: ex.flags,
+        fuIdx,
+        f1req: fetchReqCyc,  // Fetch1 request issued (same tick as icache access)
+        f1:    f1F,     // Fetch1 response (MinorLine — data available)
+        f2:    f2F,     // Fetch2 decode (decoder inst)
+        dec:   decF,    // Decode (Passing on inst)
+        dtoe:  dtoF,    // Arrival at execute input buffer
+        exbuf: tryC,    // First scoreboard attempt
+        ex:    exFU,    // FU dispatch
+        fuDone,         // FU result ready (scoreboard returnCycle)
+        cm:    cmc,     // Commit
+        // Cache events
+        icMiss,
+        // LSQ / memory events
+        memPush:     lsqEvt?.pushCycle ?? null,
+        memIssue:    lsqEvt?.issueCycle ?? null,
+        memComplete: lsqEvt?.completeCycle ?? null,
+        dcMiss,
+        // Store buffer
+        sbPush:   sbEvt?.pushCycle ?? null,
+        sbDelete: sbEvt?.deleteCycle ?? null,
+        // Branch
+        branchType: branchEvents[seq]?.type ?? null,
+        flushCycle: branchEvents[seq]?.cycle ?? null,
+        flushed: seq in discardMap,
+        flushedCycle: discardMap[seq] ?? null,
+        isControl: ex.flags.includes('IsControl'),
+        predictedTaken: ex.predictedTaken ?? false,
+        // Branch outcome: only mispred or correct (null for non-branches and flushed)
+        branchOutcome: (seq in discardMap) ? null  // flushed instructions get no branch marker
+                     : branchEvents[seq]?.type === 'UnpredictedBranch' ? 'mispred'
+                     : (branchEvents[seq]?.type === 'BranchPrediction' || ex.flags.includes('IsControl')) ? 'correct'
+                     : null,
+        //
+        estimated: decc_real === null && f1c === null && f2c_real === null,
+        _real_f1:  f1c,
+        _real_f2:  f2c_real,
+        _real_dec: decc_real,
+        _real_try: tryC,
+        _real_iss: issC,
+        _real_ret: retCyc,
+        _real_f1req: fetchReqCyc,
+      };
+    });
+
+  // Enrich instr text from commit lines (for MinorExecute-only traces)
+  if (hasMinorExecute && allInstrs.length > 0) {
+    const enrichByPC = {};
+    for (const cm of commitList)
+      (enrichByPC[cm.pc] ??= []).push({instr: cm.instr, fu: cm.fu});
+    const enrichUsed = {};
+    for (const ins of allInstrs) {
+      const list = enrichByPC[ins.pc] ?? [];
+      const ui = enrichUsed[ins.pc] ?? 0;
+      if (list[ui]) {
+        ins.instr = list[ui].instr;
+        ins.fu    = list[ui].fu;
+        enrichUsed[ins.pc] = ui + 1;
+      }
+    }
+  }
+
+  if (!allInstrs.length) { alert('No se encontraron instrucciones. Usá Exec+MinorTrace+Cache o MinorExecute+Cache.'); return; }
+
+  applyFilter();
+  document.getElementById('dropzone').style.display = 'none';
+  document.getElementById('view').style.display = 'flex';
+
+  // Init scroll
+  scrollX = 0; scrollY = 0;
+  setupScrollers();
+  redraw();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// FILTER
+// ════════════════════════════════════════════════════════════════════
+function applyFilter() {
+  vis = allInstrs;
+
+  const allC = vis.flatMap(i => [i.f1req, i.f1, i.f2, i.dec, i.dtoe, i.exbuf, i.ex, i.fuDone, i.cm, i.memComplete, i.sbDelete].filter(v => v !== null));
+  cMin = Math.min(...allC);
+  cMax = Math.max(...allC);
+  document.getElementById('s-tot').textContent = vis.length;
+
+  buildLegend();
+}
+
+// Build legend dynamically based on stages present in the trace
+function buildLegend() {
+  // Ordered list of all possible stages with their colors
+  const STAGES = [
+    { key:'f1',      label:'Fetch1',          color: COL.f1,      desc:'Fetch1 envía request a ICache y recibe datos (1 ciclo en hit)' },
+    { key:'f1miss',  label:'ICache miss',     color: COL.f1miss,  desc:'Request a ICache que resultó en miss — hay que ir a memoria' },
+    { key:'f1stall', label:'ICache stall',    color: COL.f1stall, desc:'Esperando respuesta de memoria tras ICache miss' },
+    { key:'f2buf',   label:'F2 input buf',    color: COL.f2buf,   desc:'Instrucción esperando en buffer de entrada de Fetch2 (fetch2InputBufferSize)' },
+    { key:'f2',      label:'Fetch2',          color: COL.f2,      desc:'Fetch2 decodifica bytes en instrucción (1 ciclo)' },
+    { key:'decbuf',  label:'Dec input buf',   color: COL.decbuf,  desc:'Instrucción esperando en el buffer de entrada de Decode (decodeInputBufferSize)' },
+    { key:'dec',     label:'Decode',          color: COL.dec,     desc:'Decode descompone macroops y asigna execSeqNum (1 ciclo)' },
+    { key:'dtoe',    label:'dToE transit',    color: COL.dtoe,    desc:'Latch decode→execute (solo visible con decodeToExecuteForwardDelay > 1)' },
+    { key:'exbuf',   label:'Exec input buf',  color: COL.exbuf,  desc:'Instrucción en el buffer de Execute esperando turno y/o dependencias de registros (scoreboard)' },
+
+    { key:'int',     label:'Execute Int',     color: COL.int,    desc:'Ejecución en FU de enteros (opLat ciclos)' },
+    { key:'branch',  label:'Execute Branch',  color: COL.branch, desc:'Ejecución de instrucción de salto (jal, jalr, blt, beq, etc.)' },
+    { key:'fp',      label:'Execute FP',      color: COL.fp,     desc:'Ejecución en FU de punto flotante (opLat ciclos)' },
+    { key:'mem',     label:'Execute Mem',     color: COL.mem,    desc:'Ejecución en FU de memoria — load/store dispatch' },
+    { key:'memreq',  label:'Mem request',     color: COL.memreq, desc:'Request de load/store en vuelo: LSQ→DCache→respuesta' },
+    { key:'dcmiss',  label:'DCache miss',     color: COL.dcmiss, desc:'Ciclo en que ocurrió un miss en L1 DCache' },
+    { key:'sbbuf',   label:'Store buffer',    color: COL.sbbuf,  desc:'Store esperando en el store buffer hasta ser escrito a DCache' },
+    { key:'flush',   label:'Misprediction',   color: '#ff4040',  desc:'Branch no predicho o mal predicho — flush del pipeline y redirección' },
+    { key:'correct', label:'Pred correcta',   color: '#40c0ff',  desc:'Branch predicho correctamente — sin penalidad de flush' },
+    { key:'flushed', label:'Flushed instr',   color: COL.flushed,desc:'Instrucción especulativa descartada tras misprediction' },
+    { key:'wb',      label:'Commit wait',     color: COL.wb,     desc:'Instrucción completada esperando commit in-order (instrucciones previas aún en FU)' },
+    { key:'cm',      label:'Commit',          color: COL.cm,     desc:'Instrucción commiteada — resultado arquitectural visible (1 ciclo)' },
+  ];
+
+  // Detect which stages are present
+  const present = new Set();
+  for (const ins of vis) {
+    if (ins.f1 !== null) present.add('f1');
+    if (ins.f1req !== null && ins.f1 !== null && ins.f1 > ins.f1req + 1) present.add('f1stall');
+    if (ins.icMiss === true) present.add('f1miss');
+    const f2bs = ins.f1 !== null ? ins.f1 + PIPE_F1_F2 : null;
+    if (f2bs !== null && ins.f2 !== null && ins.f2 > f2bs) present.add('f2buf');
+    if (ins.f2 !== null) present.add('f2');
+    if (ins.f2 !== null && ins.dec !== null && ins.dec > ins.f2 + PIPE_F2_DEC) present.add('decbuf');
+    if (ins.dec !== null) present.add('dec');
+    if (ins.dec !== null && ins.dtoe !== null && ins.dtoe > ins.dec + 1) present.add('dtoe');
+    if (ins.dtoe !== null && ins.ex !== null && ins.ex > ins.dtoe) present.add('exbuf');
+
+    if (ins.ex !== null) {
+      if (ins.fu?.includes('FloatMem') || ins.fu?.includes('Mem')) present.add('mem');
+      else if (ins.fu?.includes('Float')) present.add('fp');
+      else if (ins.isControl) present.add('branch');
+      else present.add('int');
+    }
+    if (ins.flushed) present.add('flushed');
+    if (ins.memIssue !== null && ins.dcMiss !== true) present.add('memreq');
+    if (ins.dcMiss === true) present.add('dcmiss');
+    if (ins.sbPush !== null) present.add('sbbuf');
+    if (ins.branchOutcome === 'mispred') present.add('flush');
+    if (ins.branchOutcome === 'correct') present.add('correct');
+    if (ins.fuDone !== null && ins.cm !== null && ins.cm > ins.fuDone) present.add('wb');
+    if (ins.cm !== null) present.add('cm');
+  }
+
+  const leg = document.getElementById('leg');
+  leg.innerHTML = STAGES
+    .filter(s => present.has(s.key))
+    .map(s => `<div class="li" title="${s.desc}"><div class="ld" style="background:${s.color}"></div>${s.label}</div>`)
+    .join('');
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SCROLLER SETUP  (phantom div drives native scrollbars)
+// ════════════════════════════════════════════════════════════════════
+function setupScrollers() {
+  const scroller = document.getElementById('scroller');
+  const inner    = document.getElementById('scroller-inner');
+
+  // Total logical size
+  const totalW = (cMax - cMin + 20) * cellW;
+  const totalH = vis.length * getRowH();
+  inner.style.width  = totalW + 'px';
+  inner.style.height = totalH + 'px';
+
+  scroller.onscroll = () => {
+    scrollX = Math.floor(scroller.scrollLeft / cellW);
+    scrollY = Math.floor(scroller.scrollTop  / getRowH());
+    redraw();
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// DRAW
+// ════════════════════════════════════════════════════════════════════
+function redraw() {
+  if (!vis.length) return;
+
+  const tlPanel   = document.getElementById('tlpanel');
+  const lblPanel  = document.getElementById('lblpanel');
+  const rulerEl   = document.getElementById('ruler');
+  const tlCanvas  = document.getElementById('tlcanvas');
+  const lblCanvas = document.getElementById('lblcanvas');
+  const rulerC    = document.getElementById('rulercanvas');
+
+  const vpW = tlPanel.clientWidth;
+  const vpH = tlPanel.clientHeight;
+  const rulerW = rulerEl.clientWidth;
+  const ROW_H = getRowH();
+
+  // Size canvases to viewport
+  tlCanvas.width = vpW; tlCanvas.height = vpH;
+  lblCanvas.width  = LBL_W;
+  lblCanvas.height = vpH;
+  rulerC.width = rulerW; rulerC.height = RULER_H;
+
+  const ctx  = tlCanvas.getContext('2d');
+  const lctx = lblCanvas.getContext('2d');
+  const rctx = rulerC.getContext('2d');
+
+  ctx.clearRect(0, 0, vpW, vpH);
+  lctx.clearRect(0, 0, LBL_W, vpH);
+  rctx.clearRect(0, 0, rulerW, RULER_H);
+
+  // Visible range
+  const ROW_H_local = getRowH();
+  const firstRow = scrollY;
+  const lastRow  = Math.min(vis.length - 1, firstRow + Math.ceil(vpH / ROW_H_local) + 1);
+  const firstCyc = cMin + scrollX;
+  const lastCyc  = firstCyc + Math.ceil(vpW / cellW) + 1;
+
+  // Ruler
+  rctx.fillStyle = '#1c1c1e';
+  rctx.fillRect(0, 0, rulerW, RULER_H);
+  rctx.font = '9px monospace';
+
+  // Per-cycle tick marks when zoomed in enough
+  if (cellW >= 8) {
+    for (let c = firstCyc; c <= lastCyc; c++) {
+      const x = (c - firstCyc) * cellW;
+      rctx.fillStyle = c % 5 === 0 ? '#383838' : '#252525';
+      rctx.fillRect(x, 0, 1, RULER_H);
+    }
+  }
+
+  // Numbered labels — step adapts to zoom
+  const cycStep = cellW >= 20 ? 1 : cellW >= 8 ? 5 : cellW < 3 ? 50 : cellW < 6 ? 20 : 10;
+  const cStart = Math.ceil(firstCyc / cycStep) * cycStep;
+  for (let c = cStart; c <= lastCyc; c += cycStep) {
+    const x = (c - firstCyc) * cellW;
+    rctx.fillStyle = '#383838';
+    rctx.fillRect(x, 0, 1, RULER_H);
+    rctx.fillStyle = '#909090';
+    rctx.fillText(c, x + 2, RULER_H - 3);
+  }
+
+  // Rows
+  for (let r = firstRow; r <= lastRow; r++) {
+    const ins = vis[r];
+    const ry  = (r - firstRow) * ROW_H_local;
+    const even = r % 2 === 0;
+
+    // Row bg
+    ctx.fillStyle  = even ? '#1c1c1e' : '#1a1a1c';
+    ctx.fillRect(0, ry, vpW, ROW_H_local);
+    lctx.fillStyle = even ? '#1e1e21' : '#1c1c1e';
+    lctx.fillRect(0, ry, LBL_W, ROW_H_local);
+
+    // Label: seq number
+    lctx.fillStyle = '#383838';
+    lctx.font = '9px monospace';
+    lctx.fillText(String(ins.seq).padStart(4,' '), 2, ry + ROW_H_local - 3);
+
+    // Label: PC
+    lctx.fillStyle = '#505070';
+    lctx.fillText(ins.pc, 36, ry + ROW_H_local - 3);
+
+    // Label: instruction text
+    lctx.fillStyle = ins.flushed ? '#804040' : ins.isControl ? '#50a0d0' : fuTextColor(ins.fu);
+    lctx.font = '10px -apple-system,sans-serif';
+    const lbl = ins.instr.length > 22 ? ins.instr.slice(0,21)+'…' : ins.instr;
+    lctx.fillText(lbl, 92, ry + ROW_H_local - 2);
+
+    // Pipeline bars
+    drawBars(ctx, ins, ry, firstCyc);
+
+    // Cycle grid lines — per-cycle when zoomed in
+    if (cellW >= 8) {
+      for (let c = firstCyc; c <= lastCyc; c++) {
+        const x = (c - firstCyc) * cellW;
+        ctx.fillStyle = c % 5 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)';
+        ctx.fillRect(x, ry, 1, ROW_H_local);
+      }
+    } else {
+      for (let c = cStart; c <= lastCyc; c += cycStep) {
+        const x = (c - firstCyc) * cellW;
+        ctx.fillStyle = 'rgba(255,255,255,0.03)';
+        ctx.fillRect(x, ry, 1, ROW_H_local);
+      }
+    }
+  }
+
+  document.getElementById('s-vis').textContent =
+    `${firstRow + 1}–${Math.min(lastRow + 1, vis.length)}`;
+}
+
+function drawBars(ctx, ins, ry, firstCyc) {
+  const ROW_H = getRowH();
+  const h = ROW_H - 2, y0 = ry + 1;
+
+  // Draw a filled segment and optionally a text label inside it
+  function seg(c0, c1, color, hFrac = 1.0, label = '') {
+    if (c0 === null || c1 === null || c1 <= c0) return;
+    const x = (c0 - firstCyc) * cellW;
+    const w = Math.max(1, (c1 - c0) * cellW - 1);
+    if (x + w < 0 || x > 20000) return;
+    const hh = Math.max(1, Math.round(h * hFrac));
+    const yy = y0 + h - hh;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, yy, w, hh);
+
+    if (label && cellW >= 14 && w >= 14) {
+      const fs = Math.min(10, Math.max(8, hh - 3));
+      ctx.font = `${fs}px -apple-system,sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x + 1, yy, w - 2, hh);
+      ctx.clip();
+      ctx.fillText(label, x + 3, yy + hh - 2);
+      ctx.restore();
+    }
+  }
+
+  // Thin strip drawn at a fixed pixel offset from top — for overlaid cache/mem events
+  function strip(c0, c1, color, yOff, stripH, label = '') {
+    if (c0 === null || c1 === null || c1 <= c0) return;
+    const x = (c0 - firstCyc) * cellW;
+    const w = Math.max(1, (c1 - c0) * cellW - 1);
+    if (x + w < 0 || x > 20000) return;
+    const yy = y0 + yOff;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, yy, w, stripH);
+
+    if (label && cellW >= 14 && w >= 14) {
+      ctx.font = `${Math.min(stripH, 9)}px -apple-system,sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x + 1, yy, w - 2, stripH);
+      ctx.clip();
+      ctx.fillText(label, x + 2, yy + stripH - 1);
+      ctx.restore();
+    }
+  }
+
+  // Flushed instructions get dimmed color on all stages
+  const isFlushed = ins.flushed;
+  const sc = (color) => isFlushed ? COL.flushed : color;
+
+  // Execution color: flushed > floatmem > float > mem > branch > int
+  const excol = isFlushed                    ? COL.flushed
+              : ins.fu?.includes('FloatMem') ? COL.mem
+              : ins.fu?.includes('Float')    ? COL.fp
+              : ins.fu?.includes('Mem')      ? COL.mem
+              : ins.isControl                ? COL.branch
+              : COL.int;
+
+  // Execute label: instruction mnemonic
+  const mnemonic = ins.instr ? ins.instr.split(/\s+/)[0] : '';
+  const fuTag = isFlushed ? '✗' + mnemonic
+              : ins.fu?.includes('FloatMem') ? (ins.fu.includes('Read') ? 'fld' : 'fsd')
+              : ins.fu?.includes('Float')    ? ins.fu.replace('Float','').toLowerCase()
+              : ins.fu?.includes('Mem')      ? (ins.fu.includes('Read') ? 'ld' : 'st')
+              : mnemonic || 'ex';
+
+  // ── Pipeline bars (drawn back-to-front, lower layers first) ──
+
+  // 8. Commit (1c)
+  if (ins.cm !== null) seg(ins.cm, ins.cm + 1, sc(COL.cm), 1.0, 'cm');
+
+  // 7. Commit wait: fuDone → cm
+  if (ins.cm !== null && ins.fuDone !== null && ins.cm > ins.fuDone)
+    seg(ins.fuDone, ins.cm, sc(COL.wb), 0.75, 'wb');
+
+  // 6. FU execution: ex → fuDone
+  if (ins.ex !== null) seg(ins.ex, ins.fuDone ?? ins.ex + 1, excol, 1.0, fuTag);
+
+  // 5+4. Execute input buffer: dtoe → ex (includes scoreboard wait)
+  if (ins.dtoe !== null && ins.ex !== null && ins.ex > ins.dtoe)
+    seg(ins.dtoe, ins.ex, sc(COL.exbuf), 0.65, 'exec buf');
+
+  // 3. dToE transit
+  if (ins.dec !== null && ins.dtoe !== null && ins.dtoe > ins.dec + 1)
+    seg(ins.dec + 1, ins.dtoe, sc(COL.dtoe), 0.60, 'dToE');
+
+  // 2. Decode (1c)
+  if (ins.dec !== null) seg(ins.dec, ins.dec + 1, sc(COL.dec), 0.65, 'dec');
+
+  // 1b. Decode input buffer
+  const decBufStart = ins.f2 !== null ? ins.f2 + PIPE_F2_DEC : null;
+  if (decBufStart !== null && ins.dec !== null && ins.dec > decBufStart)
+    seg(decBufStart, ins.dec, sc(COL.decbuf), 0.55, 'dbuf');
+
+  // 1a. Fetch2 input buffer: (f1 + PIPE_F1_F2) → f2
+  const f2BufStart = ins.f1 !== null ? ins.f1 + PIPE_F1_F2 : null;
+  if (f2BufStart !== null && ins.f2 !== null && ins.f2 > f2BufStart)
+    seg(f2BufStart, ins.f2, sc(COL.f2buf), 0.50, 'f2buf');
+
+  // 1. Fetch2 (1c)
+  if (ins.f2 !== null) seg(ins.f2, ins.f2 + 1, sc(COL.f2), 0.55, 'f2');
+
+  // 0c. ICache stall
+  if (ins.f1req !== null && ins.f1 !== null && ins.f1 > ins.f1req + 1)
+    seg(ins.f1req + 1, ins.f1, sc(COL.f1stall), 0.50, 'ic stall');
+
+  // 0b. Fetch1 response
+  if (ins.f1 !== null) seg(ins.f1, ins.f1 + 1, sc(COL.f1), 0.55, 'f1');
+
+  // 0a. Fetch1 request — only when ICache miss
+  if (ins.f1req !== null && ins.icMiss)
+    seg(ins.f1req, ins.f1req + 1, sc(COL.f1miss), 0.55, 'f1✗');
+
+  // ── Memory overlays (drawn on top, as thin strips) ──
+  const sH = Math.max(3, Math.round(h * 0.22));
+
+  if (ins.memIssue !== null && ins.memComplete !== null)
+    strip(ins.memIssue, ins.memComplete, COL.memreq, 0, sH, 'mem');
+
+  if (ins.dcMiss === true && ins.memIssue !== null)
+    strip(ins.memIssue, ins.memIssue + 1, COL.dcmiss, 0, sH, 'dc✗');
+
+  if (ins.sbPush !== null && ins.sbDelete !== null)
+    strip(ins.sbPush, ins.sbDelete, COL.sbbuf, sH + 1, sH, 'sb');
+
+  // ── Branch marker (drawn last, on top of everything) ──
+  if (ins.branchOutcome) {
+    const bCol = ins.branchOutcome === 'mispred' ? '#ff4040' : '#40c0ff';
+    const bLabel = ins.branchOutcome === 'mispred' ? '✗mispred' : '✓pred';
+    const bx = ((ins.ex ?? ins.flushCycle ?? ins.dec) - firstCyc) * cellW;
+    const bw = Math.max(cellW, 2);
+    if (bx >= 0 && bx < 20000) {
+      ctx.fillStyle = bCol;
+      ctx.fillRect(bx, y0 + h - 3, bw, 3);
+      if (cellW >= 14) {
+        ctx.font = '8px -apple-system,sans-serif';
+        ctx.fillStyle = bCol;
+        ctx.fillText(bLabel, bx, y0 - 1);
+      }
+    }
+  }
+}
+
+function fuTextColor(fu) {
+  if (!fu) return '#70d090';
+  if (fu.includes('FloatMem')) return '#e0a030';
+  if (fu.includes('Float'))    return '#5aabf0';
+  if (fu.includes('Mem'))      return '#e0a030';
+  return '#70d090';
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ZOOM
+// ════════════════════════════════════════════════════════════════════
+function setZoom(delta = 0) {
+  const el = document.getElementById('zx');
+  if (delta) el.value = Math.max(MIN_CELL, Math.min(MAX_CELL, +el.value + delta));
+  cellW = +el.value;
+  document.getElementById('zoom-val').textContent = cellW + 'px';
+  if (vis.length) { setupScrollers(); redraw(); }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// TOOLTIP
+// ════════════════════════════════════════════════════════════════════
+document.getElementById('tlcanvas').addEventListener('mousemove', ev => {
+  if (!vis.length) return;
+  const rect = document.getElementById('tlcanvas').getBoundingClientRect();
+  const mx = ev.clientX - rect.left;
+  const my = ev.clientY - rect.top;
+
+  const row = scrollY + Math.floor(my / getRowH());
+  const cyc = cMin + scrollX + Math.floor(mx / cellW);
+
+  document.getElementById('s-c').textContent = cyc;
+
+  if (row >= 0 && row < vis.length) {
+    const ins = vis[row];
+    document.getElementById('s-i').textContent = ins.instr;
+    document.getElementById('s-f').textContent = ins.fu;
+    document.getElementById('s-p').textContent = ins.pc;
+
+    const stage = getStage(ins, cyc);
+    const fuLat = ins.ex !== null && ins.fuDone !== null ? ins.fuDone - ins.ex : null;
+    const cmWait = ins.fuDone !== null && ins.cm !== null ? ins.cm - ins.fuDone : null;
+    const dbuf = ins.f2 !== null && ins.dec !== null ? ins.dec - ins.f2 - PIPE_F2_DEC : null;
+    const ebuf = ins.dtoe !== null && ins.ex !== null ? ins.ex - ins.dtoe : null;
+    const f2src = ins._real_f2 !== null ? '' : ' ~';
+    const decsrc = ins._real_dec !== null ? '' : ' ~';
+
+    const icStall = ins.f1req !== null && ins.f1 !== null ? ins.f1 - ins.f1req - 1 : null;
+    const f2buf = ins.f1 !== null && ins.f2 !== null ? ins.f2 - ins.f1 - PIPE_F1_F2 : null;
+
+    const tt = document.getElementById('tt');
+    tt.style.display = 'block';
+    tt.style.left = (ev.clientX + 14) + 'px';
+    tt.style.top  = (ev.clientY - 10) + 'px';
+    tt.innerHTML = `
+      <div style="font-weight:500;color:#e4e2dc">${ins.instr}</div>
+      <div style="color:#505050;font-size:10px;margin-bottom:6px">${ins.pc} · #${ins.seq}${ins.fuIdx !== null ? ' · FU'+ins.fuIdx : ''}</div>
+      <table style="border-collapse:collapse;font-size:11px">
+        <tr><td style="color:#505050;padding-right:12px">Class</td><td>${ins.fu||'—'}</td></tr>
+        <tr><td style="color:#505050">srcRegs</td><td style="color:#f0a030">${ins.src||'—'}</td></tr>
+        <tr><td style="color:#505050">destRegs</td><td style="color:#3ecf9a">${ins.dest||'—'}</td></tr>
+        <tr><td colspan=2 style="padding-top:4px"></td></tr>
+        <tr><td style="color:#505050">F1 req</td> <td>C${ins.f1req??'?'}</td></tr>
+        <tr><td style="color:#505050">F1 resp</td><td>C${ins.f1??'?'}${ins.icMiss?' <span style="color:#e05050">MISS</span>':ins.icMiss===false?' <span style="color:#3ecf9a">hit</span>':''}</td></tr>
+        <tr><td style="color:#505050">F2</td>     <td>C${ins.f2??'?'}${f2src}</td></tr>
+        <tr><td style="color:#505050">Dec</td>    <td>C${ins.dec??'?'}${decsrc}</td></tr>
+        <tr><td style="color:#505050">dToE</td>   <td>C${ins.dtoe??'?'}</td></tr>
+        <tr><td style="color:#505050">Issue</td>  <td>C${ins.ex??'?'}</td></tr>
+        <tr><td style="color:#505050">FU done</td><td>C${ins.fuDone??'?'}${ins._real_ret!==null?'':' ~'}</td></tr>
+        <tr><td style="color:#505050">Commit</td> <td>C${ins.cm??'?'}</td></tr>
+        <tr><td colspan=2 style="padding-top:3px"></td></tr>
+        <tr><td style="color:#505050">IC stall</td>
+          <td style="color:${icStall>0?'#e05050':'#a0a09a'}">${icStall!==null?(icStall>0?icStall+'c':'0c'):'—'}</td></tr>
+        <tr><td style="color:#505050">F2 buf</td>
+          <td style="color:${f2buf>2?'#e05050':f2buf>0?'#f0a030':'#a0a09a'}">${f2buf!==null?f2buf+'c':'—'}</td></tr>
+        <tr><td style="color:#505050">Dec buf</td>
+          <td style="color:${dbuf>4?'#e05050':dbuf>0?'#f0a030':'#a0a09a'}">${dbuf!==null?dbuf+'c':'—'}</td></tr>
+        <tr><td style="color:#505050">Exec buf</td>
+          <td style="color:${ebuf>8?'#e05050':ebuf>3?'#f0a030':'#a0a09a'}">${ebuf!==null?ebuf+'c':'—'}</td></tr>
+        <tr><td style="color:#505050">FU lat</td>
+          <td style="color:#a0a09a">${fuLat!==null?fuLat+'c':'—'}</td></tr>
+        <tr><td style="color:#505050">Cm wait</td>
+          <td style="color:${cmWait>6?'#e05050':cmWait>3?'#f0a030':'#a0a09a'}">${cmWait!==null?cmWait+'c':'—'}</td></tr>
+        ${ins.icMiss !== null ? `<tr><td colspan=2 style="padding-top:3px"></td></tr>
+        <tr><td style="color:#505050">ICache</td>
+          <td style="color:${ins.icMiss?'#e05050':'#3ecf9a'}">${ins.icMiss?'MISS':'hit'}</td></tr>` : ''}
+        ${ins.memIssue !== null ? `<tr><td style="color:#505050">Mem req</td>
+          <td>C${ins.memIssue}→C${ins.memComplete??'?'} (${ins.memComplete&&ins.memIssue?(ins.memComplete-ins.memIssue)+'c':'?'})</td></tr>` : ''}
+        ${ins.dcMiss !== null ? `<tr><td style="color:#505050">DCache</td>
+          <td style="color:${ins.dcMiss?'#e05050':'#3ecf9a'}">${ins.dcMiss?'MISS':'hit'}</td></tr>` : ''}
+        ${ins.sbPush !== null ? `<tr><td style="color:#505050">Store buf</td>
+          <td>C${ins.sbPush}→C${ins.sbDelete??'?'} (${ins.sbDelete&&ins.sbPush?(ins.sbDelete-ins.sbPush)+'c':'?'})</td></tr>` : ''}
+        ${ins.branchOutcome ? `<tr><td colspan=2 style="padding-top:3px"></td></tr>
+        <tr><td style="color:#505050">Branch</td>
+          <td style="color:${ins.branchOutcome==='mispred'?'#ff4040':'#40c0ff'}">${
+            ins.branchOutcome==='mispred'?'✗ Misprediction (pipeline flush)':'✓ Predicción correcta'}</td></tr>
+        ${ins.flushCycle?`<tr><td style="color:#505050">Redirige en</td><td>C${ins.flushCycle}</td></tr>`:''}` : ''}
+      </table>
+      ${stage ? `<div style="margin-top:5px;font-size:11px;color:${stageColor(stage)}">● ${stage}</div>` : ''}
+      ${ins.flushed ? '<div style="margin-top:4px;font-size:10px;color:#ff4040">✗ Instrucción flusheada (misprediction) — nunca commiteada</div>' : ''}
+      ${ins.estimated ? '<div style="margin-top:4px;font-size:10px;color:#505050">⚠ Etapas estimadas (sin datos reales en traza)</div>' : ''}
+    `;
+  }
+});
+
+document.getElementById('tlcanvas').addEventListener('mouseleave', () => {
+  document.getElementById('tt').style.display = 'none';
+});
+
+function getStage(ins, c) {
+  // Fetch1 request (1 cycle) — if miss, this is where the miss happened
+  if (ins.f1req !== null && ins.f1 !== null && ins.f1 > ins.f1req + 1 && c >= ins.f1req && c < ins.f1req + 1)
+    return ins.icMiss ? 'ICache miss' : 'Fetch1 request';
+  // ICache stall (waiting for memory after miss)
+  if (ins.f1req !== null && ins.f1 !== null && c >= ins.f1req + 1 && c < ins.f1) return 'ICache stall';
+  // Fetch1 response (data arrived)
+  if (ins.f1 !== null && c >= ins.f1 && c < ins.f1 + 1) return 'Fetch1';
+  // Fetch2 input buffer
+  const f2BufS = ins.f1 !== null ? ins.f1 + PIPE_F1_F2 : null;
+  if (f2BufS !== null && ins.f2 !== null && c >= f2BufS && c < ins.f2) return 'Fetch2 input buffer';
+  if (ins.f2 !== null && c >= ins.f2 && c < ins.f2 + 1) return 'Fetch2';
+  // Decode input buffer
+  const decBufStart = ins.f2 !== null ? ins.f2 + PIPE_F2_DEC : null;
+  if (decBufStart !== null && ins.dec !== null && c >= decBufStart && c < ins.dec) return 'Decode input buffer';
+  if (ins.dec !== null && c >= ins.dec && c < ins.dec + 1) return 'Decode';
+  if (ins.dec !== null && ins.dtoe !== null && c >= ins.dec + 1 && c < ins.dtoe) return 'dToE transit';
+  if (ins.dtoe !== null && ins.ex !== null && c >= ins.dtoe && c < ins.ex) return 'Execute input buffer';
+  const fd = ins.fuDone ?? (ins.ex !== null ? ins.ex + 1 : null);
+  if (ins.ex !== null && fd !== null && c >= ins.ex && c < fd) {
+    if (ins.fu?.includes('FloatMem')) return 'Execute Mem FP';
+    if (ins.fu?.includes('Float'))    return 'Execute FP';
+    if (ins.fu?.includes('Mem'))      return 'Execute Mem';
+    if (ins.isControl)                return 'Execute Branch';
+    return 'Execute Int';
+  }
+  if (fd !== null && ins.cm !== null && c >= fd && c < ins.cm) return 'Commit wait';
+  if (ins.cm && c >= ins.cm && c < ins.cm + 1) return 'Commit';
+  return null;
+}
+function stageColor(s) {
+  const m = { 'Fetch1 request':'#5aabf0','ICache miss':'#e04040','ICache stall':'#c03030',
+    'Fetch1':'#5aabf0',
+    'Fetch2 input buffer':'#3070a0','Fetch2':'#4090d0',
+    'Decode input buffer':'#7050c0',
+    'Decode':'#9080e0',
+    'dToE transit':'#30a0a0',
+    'Execute input buffer':'#4080b0',
+
+    'Execute Int':'#3ecf9a','Execute Branch':'#a060d0',
+    'Execute FP':'#5aabf0',
+    'Execute Mem':'#f0a030','Execute Mem FP':'#f0a030',
+    'Commit wait':'#30a090','Commit':'#2cb060' };
+  return m[s] || '#888';
+}
+
+// ════════════════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ════════════════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (!vis.length) return;
+  const scroller = document.getElementById('scroller');
+  if (e.key === '+' || e.key === '=') { setZoom(e.ctrlKey ? +1 : +4); e.preventDefault(); }
+  if (e.key === '-')                  { setZoom(e.ctrlKey ? -1 : -4); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { scroller.scrollLeft += cellW * 10; e.preventDefault(); }
+  if (e.key === 'ArrowLeft')  { scroller.scrollLeft -= cellW * 10; e.preventDefault(); }
+  if (e.key === 'ArrowDown')  { scroller.scrollTop  += getRowH() * 5;  e.preventDefault(); }
+  if (e.key === 'ArrowUp')    { scroller.scrollTop  -= getRowH() * 5;  e.preventDefault(); }
+  if (e.key === 'Home')       { scroller.scrollLeft = 0; e.preventDefault(); }
+  if (e.key === 'End')        { scroller.scrollLeft = scroller.scrollWidth; e.preventDefault(); }
+});
+
+// ════════════════════════════════════════════════════════════════════
+// RESIZE
+// ════════════════════════════════════════════════════════════════════
+new ResizeObserver(() => { if (vis.length) redraw(); })
+  .observe(document.getElementById('tlpanel'));
+</script>
+</body>
+</html>
