@@ -1,112 +1,250 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>gem5 Pipeline Viewer — CVA6</title>
+<title>gem5 MinorCPU Viewer</title>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-:root{
-  --bg:#18181a;--bg2:#222224;--bg3:#2a2a2d;--bg4:#313135;
-  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.14);
-  --text:#e4e2dc;--text2:#a0a09a;--text3:#505050;
+/* ============================================================================
+ * Base & color tokens
+ * ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:  #18181a;  --bg2: #222224;  --bg3: #2a2a2d;  --bg4: #313135;
+  --border:  rgba(255,255,255,.07);
+  --border2: rgba(255,255,255,.14);
+  --text:  #e4e2dc;  --text2: #a0a09a;  --text3: #505050;
+  --accent: #3ecf9a;
+  --warn:   #f0a030;
 }
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  background:var(--bg);color:var(--text);font-size:13px;
-  overflow:hidden;height:100vh;display:flex;flex-direction:column;}
 
-/* ── top bar ── */
-#top{height:42px;background:var(--bg2);border-bottom:0.5px solid var(--border2);
-  display:flex;align-items:center;gap:10px;padding:0 14px;flex-shrink:0;}
-#top h1{font-size:12px;font-weight:500;white-space:nowrap;color:var(--text2);}
-.vsep{width:0.5px;height:18px;background:var(--border2);}
-.tbtn{padding:3px 9px;background:var(--bg3);border:0.5px solid var(--border2);
-  border-radius:5px;font-size:11px;cursor:pointer;color:var(--text2);}
-.tbtn:hover{background:var(--bg4);color:var(--text);}
-.tlbl{font-size:11px;color:var(--text3);}
-#zoom-val{font-size:11px;color:#f0a030;font-weight:500;min-width:28px;}
-input[type=range]{width:70px;accent-color:#3ecf9a;cursor:pointer;}
-input[type=file]{display:none;}
-input[type=number]{width:42px;background:var(--bg3);border:0.5px solid var(--border2);
-  border-radius:4px;padding:2px 4px;color:var(--text);font-size:11px;}
-label.chk{font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px;cursor:pointer;}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
-/* ── drop zone ── */
-#dropzone{flex:1;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:8px;color:var(--text3);cursor:pointer;
-  border:1.5px dashed var(--border2);margin:20px;border-radius:8px;}
-#dropzone.ov{border-color:#3ecf9a;color:#3ecf9a;}
-#dropzone h2{font-size:13px;color:var(--text2);}
+/* ============================================================================
+ * Top bar
+ * ========================================================================== */
+#top {
+  height: 42px;
+  flex-shrink: 0;
+  background: var(--bg2);
+  border-bottom: 0.5px solid var(--border2);
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#top h1 { font-size: 12px; font-weight: 500; color: var(--text2); white-space: nowrap; }
 
-/* ── main view ── */
-#view{display:none;flex:1;overflow:hidden;flex-direction:column;}
+.vsep  { width: 0.5px; height: 18px; background: var(--border2); }
+.tlbl  { font-size: 11px; color: var(--text3); }
+.tbtn  {
+  padding: 3px 9px;
+  background: var(--bg3);
+  border: 0.5px solid var(--border2);
+  border-radius: 5px;
+  color: var(--text2);
+  font-size: 11px;
+  cursor: pointer;
+}
+.tbtn:hover    { background: var(--bg4); color: var(--text); }
+.tbtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* legend */
-#leg{height:24px;background:var(--bg2);border-bottom:0.5px solid var(--border);
-  display:flex;align-items:center;gap:10px;padding:0 14px;flex-shrink:0;}
-.li{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text3);cursor:help;}
-.ld{width:10px;height:10px;border-radius:2px;}
+#zoom-val { font-size: 11px; color: var(--warn); font-weight: 500; min-width: 42px; }
 
-/* canvas area */
-#area{display:flex;flex:1;overflow:hidden;}
+input[type=range]  { width: 90px; accent-color: var(--accent); cursor: pointer; }
+input[type=file]   { display: none; }
+input[type=number] {
+  background: var(--bg3);
+  border: 0.5px solid var(--border2);
+  border-radius: 4px;
+  padding: 2px 4px;
+  color: var(--text);
+  font-size: 11px;
+  width: 42px;
+}
+input.rng { width: 72px; }
 
-/* label panel */
-#lblpanel{width:210px;flex-shrink:0;overflow:hidden;
-  background:var(--bg2);border-right:0.5px solid var(--border2);position:relative;}
-#lblcanvas{position:absolute;top:0;left:0;}
+label.chk {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text2);
+  cursor: pointer;
+  user-select: none;
+}
+label.chk input { accent-color: var(--accent); cursor: pointer; }
 
-/* timeline panel */
-#tlpanel{flex:1;overflow:hidden;position:relative;}
-/* phantom div drives the scrollbars */
-#phantom{position:absolute;top:0;left:0;pointer-events:none;}
-#tlcanvas{position:absolute;top:0;left:0;}
-#scroller{position:absolute;inset:0;overflow:scroll;}
-#scroller-inner{} /* sized to phantom */
+/* ============================================================================
+ * Drop zone (visible until a trace is loaded)
+ * ========================================================================== */
+#dropzone {
+  flex: 1;
+  margin: 20px;
+  border: 1.5px dashed var(--border2);
+  border-radius: 8px;
+  color: var(--text3);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+#dropzone.ov   { border-color: var(--accent); color: var(--accent); }
+#dropzone h2   { font-size: 13px; color: var(--text2); }
 
-/* ruler */
-#ruler{height:18px;background:var(--bg3);border-bottom:0.5px solid var(--border2);
-  flex-shrink:0;position:relative;overflow:hidden;margin-left:210px;}
-#rulercanvas{position:absolute;top:0;left:0;}
+/* ============================================================================
+ * Main view (revealed after a trace loads)
+ * ========================================================================== */
+#view {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
 
-/* status bar */
-#status{height:21px;background:var(--bg3);border-top:0.5px solid var(--border);
-  display:flex;align-items:center;padding:0 12px;gap:14px;flex-shrink:0;}
-#status span{font-size:10px;color:var(--text3);}
-#status .hi{color:var(--text2);}
+/* Legend ------------------------------------------------------------------- */
+#leg {
+  height: 24px;
+  flex-shrink: 0;
+  background: var(--bg2);
+  border-bottom: 0.5px solid var(--border);
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.li { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text3); cursor: help; }
+.ld { width: 10px; height: 10px; border-radius: 2px; }
 
-/* tooltip */
-#tt{position:fixed;background:var(--bg2);border:0.5px solid var(--border2);
-  border-radius:6px;padding:8px 12px;font-size:11px;line-height:1.8;
-  pointer-events:none;z-index:200;display:none;max-width:340px;}
+/* Canvas area (label panel | timeline panel) ------------------------------- */
+#area     { flex: 1; display: flex; overflow: hidden; }
+
+#lblpanel {
+  width: 210px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg2);
+  border-right: 0.5px solid var(--border2);
+}
+#lblcanvas { position: absolute; top: 0; left: 0; }
+
+#tlpanel  { flex: 1; position: relative; overflow: hidden; }
+#tlcanvas { position: absolute; top: 0; left: 0; }
+
+#scroller       { position: absolute; inset: 0; overflow: scroll; }
+#scroller-inner { /* dimensions assigned by setupScrollers() */ }
+
+#crosshair {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: rgba(255,255,255,0.18);
+  pointer-events: none;
+  display: none;
+  z-index: 60;
+}
+
+/* Ruler runs above the timeline, offset by the label-panel width. */
+#ruler {
+  height: 18px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg3);
+  border-bottom: 0.5px solid var(--border2);
+  margin-left: 210px;
+}
+#rulercanvas { position: absolute; top: 0; left: 0; }
+
+/* Status bar (live stats) -------------------------------------------------- */
+#status {
+  height: 21px;
+  flex-shrink: 0;
+  background: var(--bg3);
+  border-top: 0.5px solid var(--border);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+#status span { font-size: 10px; color: var(--text3); }
+#status .hi  { color: var(--text2); }
+
+/* Hover tooltip ------------------------------------------------------------ */
+#tt {
+  position: fixed;
+  z-index: 200;
+  display: none;
+  max-width: 340px;
+  padding: 8px 12px;
+  background: var(--bg2);
+  border: 0.5px solid var(--border2);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.8;
+  pointer-events: none;
+}
 </style>
 </head>
 <body>
 
+<!-- ═══════════════════════════════ TOP BAR ════════════════════════════════ -->
 <div id="top">
-  <h1>💻 gem5 Pipeline Viewer</h1>
+  <h1>💻 gem5 MinorCPU Viewer</h1>
+
   <div class="vsep"></div>
-  <button class="tbtn" onclick="document.getElementById('fi').click()">📂 Abrir traza</button>
+  <button class="tbtn" onclick="document.getElementById('fi').click()">📂 Open trace</button>
   <input type="file" id="fi" accept=".txt,.log">
+
   <div class="vsep"></div>
   <span class="tlbl">Zoom X</span>
-  <input type="range" id="zx" min="1" max="80" value="4" oninput="setZoom()" style="width:90px">
+  <input type="range" id="zx" min="1" max="80" value="4" oninput="setZoom()">
   <span id="zoom-val">4px</span>
+  <button class="tbtn" onclick="fitAll()" title="Fit the entire program timeline into the viewport">Fit all</button>
+
   <div class="vsep"></div>
-  <span class="tlbl">MHz</span>
-  <input type="number" id="mhz" value="50">
+  <span class="tlbl">Pipeline</span>
+  <span id="pipe-delays" style="font-size:11px;color:var(--warn);font-family:monospace"
+        title="Inferred MinorCPU forward delays (F1->F2 / F2->Dec / Dec->Ex). gem5 does not emit these in the trace; the viewer infers them from observed cycle deltas.">—</span>
+
+  <div class="vsep"></div>
+  <span class="tlbl">Fetch range</span>
+  <input type="number" id="rfrom" class="rng" placeholder="from" min="1"
+         onchange="onRangeChange()" title="First instruction to show (fetch number)">
+  <span style="color:var(--text3);font-size:11px">–</span>
+  <input type="number" id="rto"   class="rng" placeholder="to"   min="1"
+         onchange="onRangeChange()" title="Last instruction to show (fetch number)">
+  <button class="tbtn" onclick="resetRange()" title="Show all instructions">Reset</button>
+
+  <div class="vsep"></div>
+  <label class="chk" title="Show the rich hover tooltip while moving the cursor">
+    <input type="checkbox" id="tt-on" checked onchange="onTooltipToggle()">
+    Tooltip
+  </label>
 </div>
 
-<!-- drop zone -->
+<!-- ═══════════════════════════════ DROP ZONE ══════════════════════════════ -->
 <div id="dropzone"
-  ondragover="event.preventDefault();this.classList.add('ov')"
-  ondragleave="this.classList.remove('ov')"
-  ondrop="event.preventDefault();this.classList.remove('ov');loadF(event.dataTransfer.files[0])"
-  onclick="document.getElementById('fi').click()">
-  <h2>Arrastrá o hacé click para cargar la traza de gem5</h2>
-  <p style="font-size:11px">Flags recomendadas: --debug-flags=Minor,MinorTrace,MinorTiming,ExecAll,Fetch,Decode,Scoreboard</p>
-  <p style="font-size:10px;margin-top:4px">Teclas: + / − para zoom · flechas para navegar</p>
+     ondragover="event.preventDefault(); this.classList.add('ov')"
+     ondragleave="this.classList.remove('ov')"
+     ondrop="event.preventDefault(); this.classList.remove('ov'); loadF(event.dataTransfer.files[0])"
+     onclick="document.getElementById('fi').click()">
+  <h2>Drag a gem5 trace here, or click to browse</h2>
+  <p style="font-size:11px">Recommended flags: --debug-flags=Minor,MinorTrace,MinorTiming,CacheAll,ExecAll,Fetch,Decode,IEW,Commit,LSQ,Scoreboard,Writeback</p>
+  <p style="font-size:10px;margin-top:4px">Keys: + / − to zoom · arrows to navigate · Home/End to jump</p>
 </div>
 
-<!-- main view (hidden until file loaded) -->
+<!-- ═══════════════════════════════ MAIN VIEW ══════════════════════════════ -->
 <div id="view">
   <div id="leg"></div>
   <div id="ruler"><canvas id="rulercanvas"></canvas></div>
@@ -114,66 +252,143 @@ label.chk{font-size:11px;color:var(--text2);display:flex;align-items:center;gap:
     <div id="lblpanel"><canvas id="lblcanvas"></canvas></div>
     <div id="tlpanel">
       <canvas id="tlcanvas"></canvas>
-      <!-- invisible scroller to drive scroll events -->
       <div id="scroller"><div id="scroller-inner"></div></div>
+      <div id="crosshair"></div>
     </div>
   </div>
 </div>
 
+<!-- ═══════════════════════════════ STATUS BAR ═════════════════════════════ -->
 <div id="status">
-  <span>Ciclo: <span class="hi" id="s-c">—</span></span>
-  <span>Instr: <span class="hi" id="s-i">—</span></span>
-  <span>FU: <span class="hi" id="s-f">—</span></span>
-  <span>PC: <span class="hi" id="s-p">—</span></span>
+  <span>Cycle:   <span class="hi" id="s-c">—</span></span>
+  <span>Instr:   <span class="hi" id="s-i">—</span></span>
+  <span>FU:      <span class="hi" id="s-f">—</span></span>
+  <span>PC:      <span class="hi" id="s-p">—</span></span>
+  <span style="color:var(--border2)">│</span>
+  <span>Cmt:     <span class="hi" id="s-cmt">—</span></span>
+  <span>IPC:     <span class="hi" id="s-ipc">—</span></span>
+  <span>Mispred: <span class="hi" id="s-misp">—</span></span>
+  <span>IC✗:     <span class="hi" id="s-icm">—</span></span>
+  <span>DC✗:     <span class="hi" id="s-dcm">—</span></span>
+  <span>Flush:   <span class="hi" id="s-flsh">—</span></span>
   <span style="margin-left:auto">Visible: <span class="hi" id="s-vis">—</span> / <span class="hi" id="s-tot">—</span></span>
 </div>
 
 <div id="tt"></div>
 
 <script>
-// ════════════════════════════════════════════════════════════════════
-// CONSTANTS & STATE
-// ════════════════════════════════════════════════════════════════════
+"use strict";
+
+/* ============================================================================
+ * SECTION 1 — Constants
+ * ========================================================================== */
+
+/* Pipeline-stage colors (one entry per legend item / drawn segment). */
 const COL = {
-  f1:'#1e4a7a', f1miss:'#c03030', f1stall:'#8a2020', f2:'#163a6a', f2buf:'#0e2a50',
-  dec:'#4a2a80',
-  decbuf:'#352060',
-  dtoe: '#1a4040',
-  exbuf:'#1a3050',
-  int:'#1a6040', branch:'#6a3090', fp:'#106060', mem:'#5a4010',
-  wb:'#1a5050', cm:'#1a5535',
-  memreq: '#b08020', dcmiss: '#d03030',
-  sbbuf:  '#c07020',
-  flushed: '#3a1515',  // dimmed red for flushed instructions
+  f1:      '#1e4a7a',  f1miss:  '#c03030',  f1stall: '#8a2020',
+  f2:      '#163a6a',  f2buf:   '#0e2a50',
+  dec:     '#4a2a80',  decbuf:  '#352060',
+  dtoe:    '#1a4040',
+  exbuf:   '#1a3050',
+  int:     '#1a6040',  branch:  '#6a3090',  fp:      '#106060',  mem:    '#5a4010',
+  wb:      '#1a5050',  cm:      '#1a5535',
+  memreq:  '#b08020',  dcmiss:  '#d03030',
+  sbbuf:   '#c07020',
+  flushed: '#3a1515',  // dimmed red used for everything on a flushed instruction
 };
 
-// Pipeline inter-stage delays (configurable, must match the gem5 config)
-// fetch1ToFetch2ForwardDelay + fetch2ToDecodeForwardDelay + decodeToExecuteForwardDelay
-let PIPE_F1_F2  = 1;  // fetch1ToFetch2ForwardDelay
-let PIPE_F2_DEC = 1;  // fetch2ToDecodeForwardDelay
-let PIPE_DEC_EX = 1;  // decodeToExecuteForwardDelay
-const LBL_W   = 210;
-const RULER_H = 18;
+/* MinorCPU forward-delay constants. gem5 does not emit these in the trace,
+ * so they are inferred at parse time from observed cycle deltas (see
+ * inferForwardDelays() below). The values below are the gem5 defaults and
+ * are used as a safe fallback when inference has too few samples. */
+let PIPE_F1_F2  = 1;   // fetch1ToFetch2ForwardDelay
+let PIPE_F2_DEC = 1;   // fetch2ToDecodeForwardDelay
+let PIPE_DEC_EX = 1;   // decodeToExecuteForwardDelay
+
+/* Layout constants. */
+const LBL_W   = 210;     // label panel width
+const RULER_H = 18;      // ruler height
+
+/* Zoom range driven by the slider. fitAll() may set cellW below MIN_CELL when
+ * a very long trace needs sub-pixel cycles to fit the whole thing. */
 const MIN_CELL = 1;
 const MAX_CELL = 80;
+const MIN_CELL_FIT = 0.05;
 
-// Row height scales with zoom so text fits comfortably
-function getRowH() {
-  return cellW >= 40 ? 26 : cellW >= 20 ? 20 : 15;
-}
+/* All cycle-typed fields on an instruction record.
+ * Used by the cMin/cMax scan and by the range-filter rebase. */
+const CYCLE_KEYS = [
+  'f1req','f1','f2','dec','dtoe','exbuf','ex','fuDone','cm',
+  'memPush','memIssue','memComplete','sbPush','sbDelete',
+  'flushedCycle','flushCycle',
+];
 
-let allInstrs = [];          // all parsed instructions
-let vis = [];                // filtered subset (current view)
-let cellW = 4;               // px per cycle
-let scrollX = 0;             // horizontal scroll (cycles from cMin)
-let scrollY = 0;             // vertical scroll (rows from top)
+/* ============================================================================
+ * SECTION 2 — State
+ * ========================================================================== */
+let allInstrs = [];   // every instruction parsed from the trace
+let vis       = [];   // currently visible subset (filtered + rebased)
+let cellW     = 4;    // pixels per cycle
+let scrollX   = 0;    // horizontal scroll, measured in cycles from cMin
+let scrollY   = 0;    // vertical scroll, measured in rows from top
 let cMin = 0, cMax = 0;
 
-// ════════════════════════════════════════════════════════════════════
-// FILE I/O
-// ════════════════════════════════════════════════════════════════════
+/* Per-trace observed maxima for buffer waits and other latencies. Used by
+ * the tooltip to color values by fraction-of-max, instead of hardcoding
+ * absolute cycle thresholds tied to the gem5 default config. */
+let pipelineStats = { f2buf: 0, dbuf: 0, ebuf: 0, cmWait: 0, icStall: 0, fuLat: 0 };
+
+/* Row height scales with zoom so labels stay legible. */
+function getRowH() { return cellW >= 40 ? 26 : cellW >= 20 ? 20 : 15; }
+
+/* Per-instruction wait quantities used both by computePipelineStats() and by
+ * the tooltip — kept here so the formula lives in one place. */
+function instWaits(ins) {
+  return {
+    icStall: ins.f1req !== null && ins.f1 !== null     ? ins.f1 - ins.f1req - 1         : null,
+    f2buf:   ins.f1 !== null && ins.f2 !== null        ? ins.f2 - ins.f1 - PIPE_F1_F2   : null,
+    dbuf:    ins.f2 !== null && ins.dec !== null       ? ins.dec - ins.f2 - PIPE_F2_DEC : null,
+    ebuf:    ins.dtoe !== null && ins.ex !== null      ? ins.ex - ins.dtoe              : null,
+    fuLat:   ins.ex !== null && ins.fuDone !== null    ? ins.fuDone - ins.ex            : null,
+    cmWait:  ins.fuDone !== null && ins.cm !== null    ? ins.cm - ins.fuDone            : null,
+  };
+}
+
+/* Compute observed maxima across all non-flushed instructions. Flushed
+ * instructions are excluded because their stage timestamps reflect a
+ * cancelled execution path, not real pipeline pressure. */
+function computePipelineStats() {
+  const max = { f2buf: 0, dbuf: 0, ebuf: 0, cmWait: 0, icStall: 0, fuLat: 0 };
+  for (const ins of allInstrs) {
+    if (ins.flushed) continue;
+    const w = instWaits(ins);
+    for (const k of Object.keys(max)) {
+      if (w[k] !== null && w[k] > max[k]) max[k] = w[k];
+    }
+  }
+  pipelineStats = max;
+}
+
+/* Color a wait value relative to the max observed for the same metric.
+ * Three-level scheme:
+ *   wait <= 0  -> grey   (no pressure)
+ *   wait > 0   -> yellow (some pressure)
+ *   wait >= ceil(max / 2)  ->  red    (significant pressure, top half of observed waits)
+ * The red threshold has a floor of 2 so a clean trace with max <= 1 never
+ * lights up red. */
+function colorizeWait(val, max) {
+  if (val === null || val <= 0) return '#a0a09a';
+  const redThr = Math.max(2, Math.ceil(max / 2));
+  if (val >= redThr) return '#e05050';
+  return '#f0a030';
+}
+
+/* ============================================================================
+ * SECTION 3 — File I/O
+ * ========================================================================== */
 document.getElementById('fi').addEventListener('change', e => {
-  const f = e.target.files[0]; if (f) loadF(f);
+  const f = e.target.files[0];
+  if (f) loadF(f);
 });
 
 function loadF(f) {
@@ -182,133 +397,148 @@ function loadF(f) {
   r.readAsText(f);
 }
 
-// ════════════════════════════════════════════════════════════════════
-// PARSER
-// ════════════════════════════════════════════════════════════════════
+/* ============================================================================
+ * SECTION 4 — Trace parser
+ *
+ * gem5 emits one event per debug line, prefixed with the simulation tick.
+ * There are two passes:
+ *   1. Find ticks-per-cycle (the minimum positive delta between distinct
+ *      ticks) — relying on a hard-coded MHz silently mis-aligns the timeline
+ *      whenever the clock differs from the assumed value.
+ *   2. Walk every line, dispatching to a regex per event type, and build
+ *      per-instruction records keyed by gem5's fetchSeqNum.
+ * ========================================================================== */
 function parse(text) {
-  const mhz = parseInt(document.getElementById('mhz').value) || 50;
-  const TPC = Math.round(1_000_000 / mhz);
+  const lines = text.split('\n');
 
-  const fetch1Map   = {};   // line_seq  → cycle (from MinorLine response)
-  const fetch1Req   = {};   // line_seq  → cycle (from "Issued fetch request to memory")
-  const fetch2Map   = {};   // fetchSeqNum → cycle (from 'decoder inst')
-  const executeMap  = {};   // exec_seq  → data  (from MinorInst OR Issuing inst)
-  const decodeMap   = {};   // execSeq → cycle (from 'Passing on inst' — real decode)
-  const scoreboardMap = {}; // execSeq → returnCycle (from 'Marking up inst')
-  const issueFirst  = {};   // exec_seq  → first cycle "Trying to issue"
-  const issueOk     = {};   // exec_seq  → cycle "Issuing inst"
-  const issueFU     = {};   // exec_seq  → FU index
-  const commitList  = [];   // {cycle, pc}
+  /* ---- Pass 1 — auto-detect ticks per cycle ------------------------------- */
+  const tickSet = new Set();
+  for (const line of lines) {
+    const tm = line.match(/^\s*(\d+):/);
+    if (tm) tickSet.add(+tm[1]);
+  }
+  const sortedTicks = [...tickSet].sort((a, b) => a - b);
+  let TPC = 10000;
+  if (sortedTicks.length > 1) {
+    let minDelta = Infinity;
+    for (let i = 1; i < sortedTicks.length; i++) {
+      const d = sortedTicks[i] - sortedTicks[i - 1];
+      if (d > 0 && d < minDelta) minDelta = d;
+    }
+    if (minDelta !== Infinity) TPC = minDelta;
+  }
 
-  // Cache tracking — cycle-based
-  const icMissCycles = new Set();
-  const icHitCycles  = new Set();
-  const lsqEvents   = {};
-  const dcacheByTick = {};
-  const storeBufEvents = {};
-
-  // Branch tracking
-  const branchEvents = {};  // execSeq → {cycle, type}
-  const discardMap   = {};  // execSeq → cycle (when instruction was discarded/flushed)
+  /* ---- Pass 2 — event-by-event extraction --------------------------------- */
+  const fetch1Map     = {};   // lineSeq     -> cycle of MinorLine response
+  const fetch1Req     = {};   // lineSeq     -> cycle of "Issued fetch request"
+  const fetch2Map     = {};   // fetchSeqNum -> cycle of "decoder inst"
+  const decodeMap     = {};   // fetchSeqNum -> cycle of "Passing on inst"
+  const executeMap    = {};   // fetchSeqNum -> {cycle, lineSeq, pc, instr, fu, ...}
+  const issueFirst    = {};   // fetchSeqNum -> first "Trying to issue" cycle
+  const issueOk       = {};   // fetchSeqNum -> "Issuing inst" (FU dispatch) cycle
+  const issueFU       = {};   // fetchSeqNum -> FU index
+  const scoreboardMap = {};   // fetchSeqNum -> scoreboard returnCycle
+  const branchEvents  = {};   // fetchSeqNum -> {cycle, type}
+  const discardMap    = {};   // fetchSeqNum -> discard cycle
+  const lsqEvents     = {};   // fetchSeqNum -> {pushCycle, issueCycle, completeCycle, isStore?}
+  const storeBufEvents = {};  // fetchSeqNum -> {pushCycle, deleteCycle}
+  const icMissCycles  = new Set();
+  const icHitCycles   = new Set();
+  const dcacheByCycle = {};   // cycle -> {miss}
+  const commitList    = [];   // {cycle, pc, instr, fu, fetchSeq}
 
   let hasMinorExecute = false;
 
-  for (const line of text.split('\n')) {
+  for (const line of lines) {
     const l = line.trim(); if (!l) continue;
     const tm = l.match(/^\s*(\d+):/); if (!tm) continue;
     const cycle = Math.round(parseInt(tm[1]) / TPC);
 
-    // Fetch1 MinorLine  id=stream/fetchId/lineSeq  (response arrived)
+    /* Fetch1 line response: "fetch1: MinorLine: id=tid/stream.pred/lineSeq ..." */
     const ml = l.match(/fetch1: MinorLine: id=\S+\/\S+\/(\d+)\s/);
     if (ml) {
-      const s = +ml[1];
-      if (!(s in fetch1Map)) fetch1Map[s] = cycle;
+      const lineSeq = +ml[1];
+      if (!(lineSeq in fetch1Map)) fetch1Map[lineSeq] = cycle;
       continue;
     }
 
-    // Fetch1 "Issued fetch request to memory" — same tick as icache access
+    /* Fetch1 request issue (same tick as the icache access). */
     const fr = l.match(/fetch1: Issued fetch request to memory: (\S+)/);
     if (fr) {
       const m = fr[1].match(/\d+\/\S+\/(\d+)/);
-      if (m) { const lseq = +m[1]; if (!(lseq in fetch1Req)) fetch1Req[lseq] = cycle; }
+      if (m) {
+        const lineSeq = +m[1];
+        if (!(lineSeq in fetch1Req)) fetch1Req[lineSeq] = cycle;
+      }
       continue;
     }
 
-    // ICache access: hit or miss — track by cycle
+    /* L1 ICache access — tracked by cycle (fetch1 issues at most one per cycle). */
     const ic = l.match(/l1icaches: access for \w+ \[[0-9a-f]+:[0-9a-f]+\] IF (miss|hit)/);
     if (ic) {
-      if (ic[1] === 'miss') icMissCycles.add(cycle);
-      else icHitCycles.add(cycle);
+      (ic[1] === 'miss' ? icMissCycles : icHitCycles).add(cycle);
       continue;
     }
 
-    // DCache access: hit or miss — track by cycle
+    /* L1 DCache access — also tracked by cycle (the LSQ issue cycle matches). */
     const dc = l.match(/l1dcaches: access for \w+ \[[0-9a-f]+:[0-9a-f]+\] (miss|hit)/);
     if (dc) {
-      dcacheByTick[cycle] = { miss: dc[1] === 'miss' };
+      dcacheByCycle[cycle] = { miss: dc[1] === 'miss' };
       continue;
     }
 
-    // LSQ state transitions — these have the execSeq directly
+    /* LSQ state transitions — the request ID embeds fetchSeqNum directly. */
     const ls = l.match(/lsq: Setting state from (\w+) to (\w+) for request: (\S+) pc:/);
     if (ls) {
       const m = ls[3].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
       if (m) {
-        const eseq = +m[3];
-        if (!(eseq in lsqEvents)) lsqEvents[eseq] = {};
-        const ev = lsqEvents[eseq];
-        if (ls[1] === 'NotIssued' && ls[2] === 'InTranslation') ev.pushCycle = cycle;
-        if (ls[2] === 'RequestIssuing') ev.issueCycle = cycle;
-        if (ls[2] === 'Complete') ev.completeCycle = cycle;
-        if (ls[1] === 'StoreBufferIssuing') ev.isStore = true;
+        const fseq = +m[3];
+        const ev = (lsqEvents[fseq] ??= {});
+        if (ls[1] === 'NotIssued'           && ls[2] === 'InTranslation')   ev.pushCycle     = cycle;
+        if (ls[2] === 'RequestIssuing')                                     ev.issueCycle    = cycle;
+        if (ls[2] === 'Complete')                                           ev.completeCycle = cycle;
+        if (ls[1] === 'StoreBufferIssuing')                                 ev.isStore       = true;
       }
       continue;
     }
 
-    // Store buffer: Pushing store with inst ID
-    const sbp = l.match(/storeBuffer: Pushing store:.*?into store buffer/);
-    if (sbp) {
-      // Next line after push usually has the considering line with ID
-      continue;
-    }
-
-    // Store buffer: Considering request (has ID)
+    /* Store buffer — "Considering" is the first ID-tagged event; "Deleting"
+     * marks the cycle where the store actually leaves the buffer. */
     const sbc = l.match(/storeBuffer: Considering request: (\S+) pc:/);
     if (sbc) {
       const m = sbc[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
       if (m) {
-        const eseq = +m[3];
-        if (!(eseq in storeBufEvents)) storeBufEvents[eseq] = { pushCycle: cycle, deleteCycle: null };
+        const fseq = +m[3];
+        if (!(fseq in storeBufEvents)) storeBufEvents[fseq] = { pushCycle: cycle, deleteCycle: null };
       }
       continue;
     }
-
-    // Store buffer: Deleting request (has ID)
     const sbd = l.match(/storeBuffer: Deleting request:.*?(\d+\/\S+\/\d+\/(\d+)\.\d+)/);
     if (sbd) {
-      const eseq = +sbd[2];
-      if (eseq in storeBufEvents) storeBufEvents[eseq].deleteCycle = cycle;
+      const fseq = +sbd[2];
+      if (fseq in storeBufEvents) storeBufEvents[fseq].deleteCycle = cycle;
       continue;
     }
 
-    // Fetch2 decoder inst  id=stream/fetchId/lineSeq/fetchSeqNum
+    /* Fetch2 — bytes are decoded into an instruction. */
     const f2m = l.match(/fetch2: decoder inst (\S+) pc:/);
     if (f2m) {
       const m = f2m[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)/);
       if (m) {
-        const fseq = +m[3]; // fetchSeqNum == execSeqNum for non-macroops
+        const fseq = +m[3];
         if (!(fseq in fetch2Map)) fetch2Map[fseq] = cycle;
       }
       continue;
     }
 
-    // Execute MinorInst  id=stream/fetchId/lineSeq/execSeq.lat
+    /* Execute MinorInst — the canonical record for an instruction.
+     * Format: id=tid/stream.pred/lineSeq/fetchSeq.execSeq addr=... inst="..." class=... */
     const mi = l.match(
       /execute: MinorInst: id=\d+\/\S+\/(\d+)\/(\d+)\.\d+\s+addr=(0x[0-9a-f]+)\s+inst="([^"]+)"\s+class=(\w+)\s+flags="([^"]*)"\s+srcRegs=([^ ]*)\s+destRegs=([^ ]*)/
     );
     if (mi) {
-      const lineSeq = +mi[1], execSeq = +mi[2];
-      executeMap[execSeq] = {
+      const lineSeq = +mi[1], fseq = +mi[2];
+      executeMap[fseq] = {
         cycle, lineSeq,
         pc: mi[3], instr: mi[4], fu: mi[5],
         flags: mi[6], src: mi[7], dest: mi[8],
@@ -317,201 +547,219 @@ function parse(text) {
       continue;
     }
 
-    // Scoreboard: "Marking up inst: ID ... returnCycle: N"
+    /* Scoreboard "Marking up" — the destination register's returnCycle is the
+     * earliest cycle the result is forwardable. */
     const sb = l.match(/scoreboard\d+: Marking up inst:\s+(\S+).*returnCycle:\s*(\d+)/);
     if (sb) {
       const m = sb[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
       if (m) {
-        const eseq = +m[3];
-        // Only keep first marking (some instructions may re-mark)
-        if (!(eseq in scoreboardMap)) scoreboardMap[eseq] = +sb[2];
+        const fseq = +m[3];
+        if (!(fseq in scoreboardMap)) scoreboardMap[fseq] = +sb[2];
       }
       continue;
     }
 
-    // Decode stage: "Passing on inst: ID pc: ADDR (op)"  — real decode cycle
+    /* Decode — "Passing on inst" is the cycle the instruction leaves Decode. */
     const dp = l.match(/decode: Passing on inst:\s+(\S+)\s+pc:\s+\S+\s+\([^)]+\)/);
     if (dp) {
       const m = dp[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)/);
-      if (m) { const eseq = +m[3]; if (!(eseq in decodeMap)) decodeMap[eseq] = cycle; }
+      if (m) {
+        const fseq = +m[3];
+        if (!(fseq in decodeMap)) decodeMap[fseq] = cycle;
+      }
       continue;
     }
 
-    // MinorExecute: "Trying to issue inst: ID pc: ADDR (op) to FU: N"
+    /* Execute — "Trying to issue" (first attempt, possibly stalled by scoreboard). */
     const ti = l.match(/Trying to issue inst:\s+(\S+)\s+pc:\s+(\S+)\s+\(([^)]+)\)\s+to FU:\s*(\d+)/);
     if (ti) {
       const m = ti[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
       if (m) {
-        const lseq = +m[2], eseq = +m[3];
+        const lineSeq = +m[2], fseq = +m[3];
         hasMinorExecute = true;
-        if (!(eseq in issueFirst)) issueFirst[eseq] = cycle;
-        if (!(eseq in executeMap)) executeMap[eseq] = {
-          cycle, lineSeq: lseq, pc: ti[2], instr: ti[3], fu: '', src: '', dest: '', flags: ''
+        if (!(fseq in issueFirst)) issueFirst[fseq] = cycle;
+        if (!(fseq in executeMap)) executeMap[fseq] = {
+          cycle, lineSeq, pc: ti[2], instr: ti[3],
+          fu: '', src: '', dest: '', flags: '',
         };
       }
       continue;
     }
 
-    // MinorExecute: "Issuing inst: ID pc: ADDR (op) into FU N"
+    /* Execute — "Issuing inst" (the cycle the FU is actually dispatched). */
     const ii = l.match(/Issuing inst:\s+(\S+)\s+pc:\s+(\S+)\s+\(([^)]+)\)\s+into FU (\d+)/);
     if (ii) {
       const m = ii[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
       if (m) {
-        const lseq = +m[2], eseq = +m[3];
-        if (!(eseq in issueOk)) issueOk[eseq] = cycle;
-        if (!(eseq in issueFU)) issueFU[eseq] = +ii[4]; // FU index
-        if (!(eseq in executeMap)) executeMap[eseq] = {
-          cycle, lineSeq: lseq, pc: ii[2], instr: ii[3], fu: '', src: '', dest: '', flags: ''
+        const lineSeq = +m[2], fseq = +m[3];
+        if (!(fseq in issueOk))  issueOk[fseq]  = cycle;
+        if (!(fseq in issueFU))  issueFU[fseq]  = +ii[4];
+        if (!(fseq in executeMap)) executeMap[fseq] = {
+          cycle, lineSeq, pc: ii[2], instr: ii[3],
+          fu: '', src: '', dest: '', flags: '',
         };
-        // Update execute cycle to actual FU dispatch (more accurate)
-        if (executeMap[eseq]) executeMap[eseq].cycle = cycle;
+        if (executeMap[fseq]) executeMap[fseq].cycle = cycle;
       }
       continue;
     }
 
-    // Branch stream change: "Changing stream on branch: TYPE target: ADDR ID pc: ADDR (op) ..."
+    /* Branch — "Changing stream on branch" fires when fetch1 redirects.
+     * Type is one of: UnpredictedBranch, BranchPrediction,
+     * CorrectlyPredictedBranch, BadlyPredictedBranch, BadlyPredictedBranchTarget,
+     * Interrupt, SuspendThread, HaltFetch. */
     const br = l.match(/Changing stream on branch: (\w+) target: \S+ (\S+) pc:/);
     if (br) {
       const m = br[2].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
       if (m) {
-        const eseq = +m[3];
-        if (!(eseq in branchEvents)) branchEvents[eseq] = { cycle, type: br[1] };
+        const fseq = +m[3];
+        if (!(fseq in branchEvents)) branchEvents[fseq] = { cycle, type: br[1] };
       }
       continue;
     }
 
-    // Discarding inst (flushed by stream change / misprediction)
+    /* Discard — instruction was speculatively in flight when its stream got
+     * flushed (misprediction or serialize-after redirect). */
     const di = l.match(/execute: Discarding inst: (\S+) pc:/);
     if (di) {
       const m = di[1].match(/(\d+)\/\S+\/(\d+)\/(\d+)\.\d+/);
       if (m) {
-        const eseq = +m[3];
-        if (!(eseq in discardMap)) discardMap[eseq] = cycle;
+        const fseq = +m[3];
+        if (!(fseq in discardMap)) discardMap[fseq] = cycle;
       }
       continue;
     }
 
-    // Commit  (T0 line)
-    const em = l.match(/T0\s+:\s+(0x[0-9a-f]+)\s+@\S+\s+:\s+(.+?)\s+:\s+(\w+)/);
+    /* Commit (T0 line). FetchSeq=N gives an exact instruction identity:
+     * a PC discarded once and re-fetched would otherwise have the discarded
+     * instance steal the commit cycle from the real one. */
+    const em = l.match(/T0\s+:\s+(0x[0-9a-f]+)\s+@\S+\s+:\s+(.+?)\s+:\s+(\w+).*?FetchSeq=(\d+)/);
     if (em && l.includes('T0')) {
-      commitList.push({ cycle, pc: em[1], instr: em[2].trim(), fu: em[3] });
+      commitList.push({ cycle, pc: em[1], instr: em[2].trim(), fu: em[3], fetchSeq: +em[4] });
     }
   }
 
-  // Build per-instruction records
+  /* ---- Infer forward delays from observed cycle deltas ------------------ */
+  /* The minimum gap between consecutive stage timestamps across many
+   * instructions equals the forward delay (the no-stall floor; any extra
+   * gap is buffer wait). With too few valid samples, fall back to the
+   * gem5 default of 1 cycle. */
+  inferForwardDelays(executeMap, fetch1Map, fetch2Map, decodeMap, issueFirst);
+
+  /* ---- Build per-instruction records ------------------------------------- */
+  /* Preferred commit lookup: by fetchSeqNum (unique across the simulation). */
+  const commitByFetchSeq = {};
+  for (const cm of commitList) {
+    if (cm.fetchSeq !== undefined) commitByFetchSeq[cm.fetchSeq] = cm;
+  }
+  /* Fallback for traces that omit FetchSeq=: per-PC pairing, but skip
+   * discarded instances so they don't steal a real commit. */
   const commitByPC = {};
-  for (const cm of commitList)
-    (commitByPC[cm.pc] ??= []).push(cm.cycle);
+  for (const cm of commitList) (commitByPC[cm.pc] ??= []).push(cm.cycle);
   const usedIdx = {};
 
   allInstrs = Object.entries(executeMap)
     .sort(([a], [b]) => a - b)
     .map(([seqStr, ex]) => {
-      const seq  = +seqStr;
-      const f1c  = fetch1Map[ex.lineSeq] ?? null;  // Real: from MinorLine
-      const f2c_real = fetch2Map[seq] ?? null;       // Real: from "decoder inst"
-      const tryC = issueFirst[seq] ?? null;          // Real: first "Trying to issue"
-      const issC = issueOk[seq]    ?? null;          // Real: FU dispatch
-      const fuIdx = issueFU[seq]   ?? null;          // FU index
-      const retCyc = scoreboardMap[seq] ?? null;     // Real: scoreboard returnCycle
+      const seq    = +seqStr;
+      const f1c    = fetch1Map[ex.lineSeq] ?? null;
+      const f2real = fetch2Map[seq]        ?? null;
+      const tryC   = issueFirst[seq]       ?? null;
+      const issC   = issueOk[seq]          ?? null;
+      const fuIdx  = issueFU[seq]          ?? null;
+      const retCyc = scoreboardMap[seq]    ?? null;
+      const decReal = decodeMap[seq]       ?? null;
 
-      // Real decode from 'Passing on inst' (if Decode flag was active)
-      const decc_real = decodeMap[seq] ?? null;
+      /* Prefer real cycles; estimate the rest from neighbors using
+       * pipeline forward delays. */
+      const f2est   = f1c    !== null ? f1c    + PIPE_F1_F2  : null;
+      const f2Final = f2real ?? f2est;
+      const decEst  = f2Final !== null ? f2Final + PIPE_F2_DEC : null;
+      const decFin  = decReal ?? decEst;
 
-      // f2: prefer real, then estimate from f1
-      const f2est = f1c !== null ? f1c + PIPE_F1_F2 : null;
-      const f2Final = f2c_real ?? f2est;
-
-      // dec: prefer real, then estimate from f2
-      const decEst = f2Final !== null ? f2Final + PIPE_F2_DEC : null;
-      const decFinal = decc_real ?? decEst;
-
-      // Fallback: estimate backwards from execute events
       const base = tryC ?? issC ?? ex.cycle;
-      const decF = decFinal ?? (base - PIPE_DEC_EX);
-      const f2F  = f2Final  ?? (decF - PIPE_F2_DEC);
-      const f1F  = f1c      ?? (f2F  - PIPE_F1_F2);
+      const decF = decFin  ?? (base    - PIPE_DEC_EX);
+      const f2F  = f2Final ?? (decF    - PIPE_F2_DEC);
+      const f1F  = f1c     ?? (f2F     - PIPE_F1_F2);
       const dtoF = decF + PIPE_DEC_EX;
 
-      // Commit
-      const pcs  = commitByPC[ex.pc] ?? [];
-      const ui   = usedIdx[ex.pc] ?? 0;
-      usedIdx[ex.pc] = ui + 1;
-      const cmc  = pcs[ui] ?? null;
+      /* Commit cycle: try fetch-seq match; on miss (and if not discarded),
+       * fall back to the per-PC pair. */
+      let cmc = commitByFetchSeq[seq]?.cycle ?? null;
+      const isDiscarded = (seq in discardMap);
+      if (cmc === null && !isDiscarded) {
+        const pcs = commitByPC[ex.pc] ?? [];
+        const ui  = usedIdx[ex.pc] ?? 0;
+        usedIdx[ex.pc] = ui + 1;
+        cmc = pcs[ui] ?? null;
+      }
 
-      // FU dispatch cycle
-      const exFU = issC ?? ex.cycle;
-
-      // FU completion: from scoreboard returnCycle, or ex+1 as fallback
+      const exFU   = issC ?? ex.cycle;
       const fuDone = retCyc ?? (exFU + 1);
 
-      // ICache: check if this line's fetch request was a miss
       const fetchReqCyc = fetch1Req[ex.lineSeq] ?? null;
       const icMiss = fetchReqCyc !== null ? icMissCycles.has(fetchReqCyc) : null;
 
-      // LSQ events for load/store instructions
-      const lsqEvt = lsqEvents[seq] ?? null;
+      const lsqEvt = lsqEvents[seq]      ?? null;
       const sbEvt  = storeBufEvents[seq] ?? null;
-
-      // DCache: match by the LSQ issue cycle (same tick as dcache access)
       let dcMiss = null;
       if (lsqEvt?.issueCycle != null) {
-        const dc = dcacheByTick[lsqEvt.issueCycle];
+        const dc = dcacheByCycle[lsqEvt.issueCycle];
         if (dc) dcMiss = dc.miss;
       }
 
+      /* Branch outcome — only meaningful for actual control instructions
+       * that committed:
+       *   UnpredictedBranch / Badly*  -> mispredict (pipeline flushed)
+       *   BranchPrediction / Correctly* -> predicted right
+       *   non-control or discarded    -> null */
+      const branchOutcome = (() => {
+        if (isDiscarded) return null;
+        if (!ex.flags?.includes('IsControl')) return null;
+        const t = branchEvents[seq]?.type;
+        if (t === 'UnpredictedBranch' || (t && t.startsWith('Badly'))) return 'mispred';
+        return 'correct';
+      })();
+
       return {
-        seq, pc: ex.pc, instr: ex.instr, fu: ex.fu,
-        src: ex.src, dest: ex.dest, flags: ex.flags,
+        seq,  pc: ex.pc,  instr: ex.instr,  fu: ex.fu,
+        src: ex.src,  dest: ex.dest,  flags: ex.flags,
         fuIdx,
-        f1req: fetchReqCyc,  // Fetch1 request issued (same tick as icache access)
-        f1:    f1F,     // Fetch1 response (MinorLine — data available)
-        f2:    f2F,     // Fetch2 decode (decoder inst)
-        dec:   decF,    // Decode (Passing on inst)
-        dtoe:  dtoF,    // Arrival at execute input buffer
-        exbuf: tryC,    // First scoreboard attempt
-        ex:    exFU,    // FU dispatch
-        fuDone,         // FU result ready (scoreboard returnCycle)
-        cm:    cmc,     // Commit
-        // Cache events
+        f1req: fetchReqCyc,  // fetch1 request issued (icache access cycle)
+        f1:    f1F,          // fetch1 response   (MinorLine)
+        f2:    f2F,          // fetch2 decode     (decoder inst)
+        dec:   decF,         // decode            (Passing on inst)
+        dtoe:  dtoF,         // arrives at execute input buffer
+        exbuf: tryC,         // first scoreboard issue attempt
+        ex:    exFU,         // FU dispatch
+        fuDone,              // FU result ready  (scoreboard returnCycle)
+        cm:    cmc,          // commit
         icMiss,
-        // LSQ / memory events
-        memPush:     lsqEvt?.pushCycle ?? null,
-        memIssue:    lsqEvt?.issueCycle ?? null,
+        memPush:     lsqEvt?.pushCycle     ?? null,
+        memIssue:    lsqEvt?.issueCycle    ?? null,
         memComplete: lsqEvt?.completeCycle ?? null,
         dcMiss,
-        // Store buffer
-        sbPush:   sbEvt?.pushCycle ?? null,
+        sbPush:   sbEvt?.pushCycle   ?? null,
         sbDelete: sbEvt?.deleteCycle ?? null,
-        // Branch
-        branchType: branchEvents[seq]?.type ?? null,
-        flushCycle: branchEvents[seq]?.cycle ?? null,
-        flushed: seq in discardMap,
+        branchType:  branchEvents[seq]?.type  ?? null,
+        flushCycle:  branchEvents[seq]?.cycle ?? null,
+        flushed:     isDiscarded,
         flushedCycle: discardMap[seq] ?? null,
-        isControl: ex.flags.includes('IsControl'),
+        isControl:   ex.flags.includes('IsControl'),
         predictedTaken: ex.predictedTaken ?? false,
-        // Branch outcome: only mispred or correct (null for non-branches and flushed)
-        branchOutcome: (seq in discardMap) ? null  // flushed instructions get no branch marker
-                     : branchEvents[seq]?.type === 'UnpredictedBranch' ? 'mispred'
-                     : (branchEvents[seq]?.type === 'BranchPrediction' || ex.flags.includes('IsControl')) ? 'correct'
-                     : null,
-        //
-        estimated: decc_real === null && f1c === null && f2c_real === null,
-        _real_f1:  f1c,
-        _real_f2:  f2c_real,
-        _real_dec: decc_real,
-        _real_try: tryC,
-        _real_iss: issC,
-        _real_ret: retCyc,
+        branchOutcome,
+        estimated: decReal === null && f1c === null && f2real === null,
+        /* Internal flags so the tooltip can mark estimated cycles with "~". */
+        _real_f1: f1c, _real_f2: f2real, _real_dec: decReal,
+        _real_try: tryC, _real_iss: issC, _real_ret: retCyc,
         _real_f1req: fetchReqCyc,
       };
     });
 
-  // Enrich instr text from commit lines (for MinorExecute-only traces)
+  /* MinorExecute-only traces don't carry mnemonics on the issue lines — pull
+   * them from the matching commit lines (paired by PC, in order). */
   if (hasMinorExecute && allInstrs.length > 0) {
     const enrichByPC = {};
-    for (const cm of commitList)
-      (enrichByPC[cm.pc] ??= []).push({instr: cm.instr, fu: cm.fu});
+    for (const cm of commitList) (enrichByPC[cm.pc] ??= []).push({ instr: cm.instr, fu: cm.fu });
     const enrichUsed = {};
     for (const ins of allInstrs) {
       const list = enrichByPC[ins.pc] ?? [];
@@ -524,105 +772,261 @@ function parse(text) {
     }
   }
 
-  if (!allInstrs.length) { alert('No se encontraron instrucciones. Usá Exec+MinorTrace+Cache o MinorExecute+Cache.'); return; }
+  if (!allInstrs.length) {
+    alert('No instructions found in the trace. Use the recommend flags.');
+    return;
+  }
+
+  /* Surface the available fetch-number range as input placeholders, and
+   * clear any stale filter from a previous file load. */
+  computePipelineStats();
+  const seqs   = allInstrs.map(i => i.seq);
+  const minSeq = Math.min(...seqs), maxSeq = Math.max(...seqs);
+  const rfromEl = document.getElementById('rfrom');
+  const rtoEl   = document.getElementById('rto');
+  rfromEl.placeholder = String(minSeq);
+  rtoEl.placeholder   = String(maxSeq);
+  rfromEl.min = rtoEl.min = String(minSeq);
+  rfromEl.max = rtoEl.max = String(maxSeq);
+  rfromEl.value = '';
+  rtoEl.value   = '';
 
   applyFilter();
   document.getElementById('dropzone').style.display = 'none';
-  document.getElementById('view').style.display = 'flex';
+  document.getElementById('view').style.display     = 'flex';
 
-  // Init scroll
   scrollX = 0; scrollY = 0;
   setupScrollers();
   redraw();
 }
 
-// ════════════════════════════════════════════════════════════════════
-// FILTER
-// ════════════════════════════════════════════════════════════════════
-function applyFilter() {
-  vis = allInstrs;
+/* Infer the three forward-delay constants from observed cycle deltas.
+ * For each pair of consecutive stages, take the minimum delta across all
+ * instructions where both endpoints are real (not estimated). Clamp to
+ * a sane range and require at least 4 samples; otherwise keep the
+ * existing default. Updates PIPE_F1_F2, PIPE_F2_DEC, PIPE_DEC_EX in place
+ * and reflects the result in the top-bar "Pipeline" indicator. */
+function inferForwardDelays(executeMap, fetch1Map, fetch2Map, decodeMap, issueFirst) {
+  const d_f1f2  = [];
+  const d_f2dec = [];
+  const d_dectr = [];
+  for (const seqStr in executeMap) {
+    const seq = +seqStr;
+    const ex  = executeMap[seq];
+    const f1  = fetch1Map[ex.lineSeq];
+    const f2  = fetch2Map[seq];
+    const dc  = decodeMap[seq];
+    const tr  = issueFirst[seq];
+    if (f1 != null && f2 != null) d_f1f2 .push(f2 - f1);
+    if (f2 != null && dc != null) d_f2dec.push(dc - f2);
+    if (dc != null && tr != null) d_dectr.push(tr - dc);
+  }
+  const pick = (deltas, fallback) => {
+    const valid = deltas.filter(d => d >= 1 && d <= 16);
+    if (valid.length < 4) return fallback;
+    return Math.min(...valid);
+  };
+  /* Reset to gem5 defaults before inference, otherwise a second trace load
+   * would use the previous trace's inferred values as the fallback. */
+  PIPE_F1_F2  = pick(d_f1f2,  1);
+  PIPE_F2_DEC = pick(d_f2dec, 1);
+  PIPE_DEC_EX = pick(d_dectr, 1);
 
-  const allC = vis.flatMap(i => [i.f1req, i.f1, i.f2, i.dec, i.dtoe, i.exbuf, i.ex, i.fuDone, i.cm, i.memComplete, i.sbDelete].filter(v => v !== null));
-  cMin = Math.min(...allC);
-  cMax = Math.max(...allC);
-  document.getElementById('s-tot').textContent = vis.length;
-
-  buildLegend();
+  /* Reflect the result in the top bar so the user can sanity-check it. */
+  const el = document.getElementById('pipe-delays');
+  if (el) {
+    el.textContent = `${PIPE_F1_F2}/${PIPE_F2_DEC}/${PIPE_DEC_EX}`;
+    el.title =
+      `Inferred MinorCPU forward delays:\n` +
+      `  fetch1ToFetch2ForwardDelay  = ${PIPE_F1_F2}\n` +
+      `  fetch2ToDecodeForwardDelay  = ${PIPE_F2_DEC}\n` +
+      `  decodeToExecuteForwardDelay = ${PIPE_DEC_EX}\n\n` +
+      `gem5 does not emit these in the trace; the viewer infers them ` +
+      `from the minimum observed gap between consecutive stage timestamps.`;
+  }
+  console.log(`[gem5-viewer] inferred forward delays: F1->F2=${PIPE_F1_F2} F2->Dec=${PIPE_F2_DEC} Dec->Ex=${PIPE_DEC_EX}`);
 }
 
-// Build legend dynamically based on stages present in the trace
-function buildLegend() {
-  // Ordered list of all possible stages with their colors
-  const STAGES = [
-    { key:'f1',      label:'Fetch1',          color: COL.f1,      desc:'Fetch1 envía request a ICache y recibe datos (1 ciclo en hit)' },
-    { key:'f1miss',  label:'ICache miss',     color: COL.f1miss,  desc:'Request a ICache que resultó en miss — hay que ir a memoria' },
-    { key:'f1stall', label:'ICache stall',    color: COL.f1stall, desc:'Esperando respuesta de memoria tras ICache miss' },
-    { key:'f2buf',   label:'F2 input buf',    color: COL.f2buf,   desc:'Instrucción esperando en buffer de entrada de Fetch2 (fetch2InputBufferSize)' },
-    { key:'f2',      label:'Fetch2',          color: COL.f2,      desc:'Fetch2 decodifica bytes en instrucción (1 ciclo)' },
-    { key:'decbuf',  label:'Dec input buf',   color: COL.decbuf,  desc:'Instrucción esperando en el buffer de entrada de Decode (decodeInputBufferSize)' },
-    { key:'dec',     label:'Decode',          color: COL.dec,     desc:'Decode descompone macroops y asigna execSeqNum (1 ciclo)' },
-    { key:'dtoe',    label:'dToE transit',    color: COL.dtoe,    desc:'Latch decode→execute (solo visible con decodeToExecuteForwardDelay > 1)' },
-    { key:'exbuf',   label:'Exec input buf',  color: COL.exbuf,  desc:'Instrucción en el buffer de Execute esperando turno y/o dependencias de registros (scoreboard)' },
+/* ============================================================================
+ * SECTION 5 — Filter & cycle rebase
+ *
+ * The renderer is cycle-agnostic: hand it pre-shifted records when the
+ * range filter is active. allInstrs is never mutated.
+ * ========================================================================== */
+function applyFilter() {
+  const fromV = document.getElementById('rfrom').value.trim();
+  const toV   = document.getElementById('rto').value.trim();
+  let rFrom = fromV === '' ? null : parseInt(fromV);
+  let rTo   = toV   === '' ? null : parseInt(toV);
+  if (Number.isNaN(rFrom)) rFrom = null;
+  if (Number.isNaN(rTo))   rTo   = null;
+  if (rFrom !== null && rTo !== null && rFrom > rTo) [rFrom, rTo] = [rTo, rFrom]; // be tolerant
+  const rangeActive = rFrom !== null || rTo !== null;
 
-    { key:'int',     label:'Execute Int',     color: COL.int,    desc:'Ejecución en FU de enteros (opLat ciclos)' },
-    { key:'branch',  label:'Execute Branch',  color: COL.branch, desc:'Ejecución de instrucción de salto (jal, jalr, blt, beq, etc.)' },
-    { key:'fp',      label:'Execute FP',      color: COL.fp,     desc:'Ejecución en FU de punto flotante (opLat ciclos)' },
-    { key:'mem',     label:'Execute Mem',     color: COL.mem,    desc:'Ejecución en FU de memoria — load/store dispatch' },
-    { key:'memreq',  label:'Mem request',     color: COL.memreq, desc:'Request de load/store en vuelo: LSQ→DCache→respuesta' },
-    { key:'dcmiss',  label:'DCache miss',     color: COL.dcmiss, desc:'Ciclo en que ocurrió un miss en L1 DCache' },
-    { key:'sbbuf',   label:'Store buffer',    color: COL.sbbuf,  desc:'Store esperando en el store buffer hasta ser escrito a DCache' },
-    { key:'flush',   label:'Misprediction',   color: '#ff4040',  desc:'Branch no predicho o mal predicho — flush del pipeline y redirección' },
-    { key:'correct', label:'Pred correcta',   color: '#40c0ff',  desc:'Branch predicho correctamente — sin penalidad de flush' },
-    { key:'flushed', label:'Flushed instr',   color: COL.flushed,desc:'Instrucción especulativa descartada tras misprediction' },
-    { key:'wb',      label:'Commit wait',     color: COL.wb,     desc:'Instrucción completada esperando commit in-order (instrucciones previas aún en FU)' },
-    { key:'cm',      label:'Commit',          color: COL.cm,     desc:'Instrucción commiteada — resultado arquitectural visible (1 ciclo)' },
+  let filtered = allInstrs;
+  if (rangeActive) {
+    filtered = allInstrs.filter(i =>
+      (rFrom === null || i.seq >= rFrom) &&
+      (rTo   === null || i.seq <= rTo));
+  }
+
+  /* Rebase: when a range is active, shift every cycle so the earliest event
+   * in the visible window lands at cycle 1. */
+  let offset = 0;
+  if (rangeActive && filtered.length > 0) {
+    let minC = Infinity;
+    for (const ins of filtered) {
+      for (const k of CYCLE_KEYS) {
+        const v = ins[k];
+        if (v !== null && v !== undefined && v < minC) minC = v;
+      }
+    }
+    if (minC !== Infinity) offset = minC - 1;
+  }
+
+  if (offset === 0) {
+    vis = filtered;
+  } else {
+    vis = filtered.map(ins => {
+      const r = { ...ins };
+      for (const k of CYCLE_KEYS) {
+        if (r[k] !== null && r[k] !== undefined) r[k] -= offset;
+      }
+      return r;
+    });
+  }
+
+  /* Cycle range over the (possibly rebased) vis. */
+  let lo = Infinity, hi = -Infinity;
+  for (const i of vis) {
+    for (const k of CYCLE_KEYS) {
+      const v = i[k];
+      if (v !== null && v !== undefined) {
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+    }
+  }
+  cMin = lo === Infinity ? 0 : lo;
+  cMax = hi === -Infinity ? 0 : hi;
+
+  document.getElementById('s-tot').textContent = vis.length;
+  buildLegend();
+  updateStats();
+}
+
+function onRangeChange() {
+  if (!allInstrs.length) return;
+  applyFilter();
+  scrollX = 0; scrollY = 0;
+  const scroller = document.getElementById('scroller');
+  scroller.scrollLeft = 0; scroller.scrollTop = 0;
+  setupScrollers();
+  redraw();
+}
+
+function resetRange() {
+  document.getElementById('rfrom').value = '';
+  document.getElementById('rto').value   = '';
+  onRangeChange();
+}
+
+/* ============================================================================
+ * SECTION 6 — Live summary stats
+ * ========================================================================== */
+function updateStats() {
+  let nCommit = 0, nFlush = 0, nMisp = 0, nDc = 0;
+  const icSet = new Set();
+  for (const i of vis) {
+    if      (i.flushed)        nFlush++;
+    else if (i.cm !== null)    nCommit++;
+    if (i.branchOutcome === 'mispred') nMisp++;
+    /* Multiple instructions can share one cache-line miss — dedupe by
+     * the request cycle so the count is per-line, not per-instruction. */
+    if (i.icMiss === true && i.f1req !== null) icSet.add(i.f1req);
+    if (i.dcMiss === true) nDc++;
+  }
+  const span = (cMax > cMin) ? (cMax - cMin + 1) : 0;
+  const ipc  = (span > 0) ? (nCommit / span).toFixed(2) : '—';
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('s-cmt',  nCommit);
+  set('s-ipc',  ipc);
+  set('s-misp', nMisp);
+  set('s-icm',  icSet.size);
+  set('s-dcm',  nDc);
+  set('s-flsh', nFlush);
+}
+
+/* ============================================================================
+ * SECTION 7 — Dynamic legend
+ * ========================================================================== */
+function buildLegend() {
+  const STAGES = [
+    { key:'f1',      label:'Fetch1',          color: COL.f1,      desc:'Fetch1 issues a request to ICache and receives data (1 cycle on hit)' },
+    { key:'f1miss',  label:'ICache miss',     color: COL.f1miss,  desc:'ICache request that missed — must go to memory' },
+    { key:'f1stall', label:'ICache stall',    color: COL.f1stall, desc:'Waiting for memory after an ICache miss' },
+    { key:'f2buf',   label:'F2 input buf',    color: COL.f2buf,   desc:'Instruction queued in the Fetch2 input buffer. Two non-obvious points: (1) buffer size (fetch2InputBufferSize) is in cache lines of fetch1LineWidth bytes, NOT instructions — two RVC instructions packed into one 4-byte line share a single slot but appear as two rows. (2) Fetch1 reserves a slot at request issue time (not arrival) and releases it when Fetch2 pops the line, so a line holds its slot for AT LEAST 2 cycles. With size=N, the largest queue you can build up is N-1 ready lines plus 1 reservation in flight. Buffers sized for N lines effectively act like N-1 in steady state when Fetch2 is fast.' },
+    { key:'f2',      label:'Fetch2',          color: COL.f2,      desc:'Fetch2 decodes raw bytes into an instruction (1 cycle)' },
+    { key:'decbuf',  label:'Dec input buf',   color: COL.decbuf,  desc:'Instruction queued in the Decode input buffer (decodeInputBufferSize)' },
+    { key:'dec',     label:'Decode',          color: COL.dec,     desc:'Decode splits macro-ops and assigns execSeqNum (1 cycle)' },
+    { key:'dtoe',    label:'dToE transit',    color: COL.dtoe,    desc:'Decode→Execute latch (only visible when decodeToExecuteForwardDelay > 1)' },
+    { key:'exbuf',   label:'Exec input buf',  color: COL.exbuf,   desc:'In Execute input buffer waiting for FU and/or operand readiness (scoreboard)' },
+    { key:'int',     label:'Execute Int',     color: COL.int,     desc:'Execution on the integer FU (opLat cycles)' },
+    { key:'branch',  label:'Execute Branch',  color: COL.branch,  desc:'Execution of a branch instruction (jal, jalr, blt, beq, …)' },
+    { key:'fp',      label:'Execute FP',      color: COL.fp,      desc:'Execution on a floating-point FU (opLat cycles)' },
+    { key:'mem',     label:'Execute Mem',     color: COL.mem,     desc:'Execution on the memory FU — load/store dispatch' },
+    { key:'memreq',  label:'Mem request',     color: COL.memreq,  desc:'Load/store in flight: LSQ → DCache → response' },
+    { key:'dcmiss',  label:'DCache miss',     color: COL.dcmiss,  desc:'Cycle in which an L1 DCache miss occurred' },
+    { key:'sbbuf',   label:'Store buffer',    color: COL.sbbuf,   desc:'Store waiting in the store buffer until written to DCache' },
+    { key:'flush',   label:'Misprediction',   color: '#ff4040',   desc:'Branch unpredicted or mispredicted — pipeline flush + redirect' },
+    { key:'correct', label:'Predicted OK',    color: '#40c0ff',   desc:'Branch predicted correctly — no flush penalty' },
+    { key:'flushed', label:'Flushed instr',   color: COL.flushed, desc:'Speculative instruction discarded after a misprediction' },
+    { key:'wb',      label:'Commit wait',     color: COL.wb,      desc:'Completed instruction waiting for in-order commit (older instructions still in the FU)' },
+    { key:'cm',      label:'Commit',          color: COL.cm,      desc:'Instruction committed — architectural state visible (1 cycle)' },
   ];
 
-  // Detect which stages are present
   const present = new Set();
   for (const ins of vis) {
     if (ins.f1 !== null) present.add('f1');
     if (ins.f1req !== null && ins.f1 !== null && ins.f1 > ins.f1req + 1) present.add('f1stall');
     if (ins.icMiss === true) present.add('f1miss');
     const f2bs = ins.f1 !== null ? ins.f1 + PIPE_F1_F2 : null;
-    if (f2bs !== null && ins.f2 !== null && ins.f2 > f2bs) present.add('f2buf');
-    if (ins.f2 !== null) present.add('f2');
+    if (f2bs !== null && ins.f2 !== null && ins.f2 > f2bs)               present.add('f2buf');
+    if (ins.f2 !== null)                                                 present.add('f2');
     if (ins.f2 !== null && ins.dec !== null && ins.dec > ins.f2 + PIPE_F2_DEC) present.add('decbuf');
-    if (ins.dec !== null) present.add('dec');
+    if (ins.dec !== null)                                                present.add('dec');
     if (ins.dec !== null && ins.dtoe !== null && ins.dtoe > ins.dec + 1) present.add('dtoe');
-    if (ins.dtoe !== null && ins.ex !== null && ins.ex > ins.dtoe) present.add('exbuf');
-
+    if (ins.dtoe !== null && ins.ex !== null && ins.ex > ins.dtoe)       present.add('exbuf');
     if (ins.ex !== null) {
-      if (ins.fu?.includes('FloatMem') || ins.fu?.includes('Mem')) present.add('mem');
-      else if (ins.fu?.includes('Float')) present.add('fp');
-      else if (ins.isControl) present.add('branch');
-      else present.add('int');
+      if      (ins.fu?.includes('FloatMem') || ins.fu?.includes('Mem')) present.add('mem');
+      else if (ins.fu?.includes('Float'))                                present.add('fp');
+      else if (ins.isControl)                                            present.add('branch');
+      else                                                               present.add('int');
     }
-    if (ins.flushed) present.add('flushed');
-    if (ins.memIssue !== null && ins.dcMiss !== true) present.add('memreq');
-    if (ins.dcMiss === true) present.add('dcmiss');
-    if (ins.sbPush !== null) present.add('sbbuf');
-    if (ins.branchOutcome === 'mispred') present.add('flush');
-    if (ins.branchOutcome === 'correct') present.add('correct');
-    if (ins.fuDone !== null && ins.cm !== null && ins.cm > ins.fuDone) present.add('wb');
-    if (ins.cm !== null) present.add('cm');
+    if (ins.flushed)                                                     present.add('flushed');
+    if (ins.memIssue !== null && ins.dcMiss !== true)                    present.add('memreq');
+    if (ins.dcMiss === true)                                             present.add('dcmiss');
+    if (ins.sbPush !== null)                                             present.add('sbbuf');
+    if (ins.branchOutcome === 'mispred')                                 present.add('flush');
+    if (ins.branchOutcome === 'correct')                                 present.add('correct');
+    if (ins.fuDone !== null && ins.cm !== null && ins.cm > ins.fuDone)   present.add('wb');
+    if (ins.cm !== null)                                                 present.add('cm');
   }
 
-  const leg = document.getElementById('leg');
-  leg.innerHTML = STAGES
+  document.getElementById('leg').innerHTML = STAGES
     .filter(s => present.has(s.key))
     .map(s => `<div class="li" title="${s.desc}"><div class="ld" style="background:${s.color}"></div>${s.label}</div>`)
     .join('');
 }
 
-// ════════════════════════════════════════════════════════════════════
-// SCROLLER SETUP  (phantom div drives native scrollbars)
-// ════════════════════════════════════════════════════════════════════
+/* ============================================================================
+ * SECTION 8 — Scroller setup (the inner div sizes the scrollbars)
+ * ========================================================================== */
 function setupScrollers() {
   const scroller = document.getElementById('scroller');
   const inner    = document.getElementById('scroller-inner');
 
-  // Total logical size
   const totalW = (cMax - cMin + 20) * cellW;
   const totalH = vis.length * getRowH();
   inner.style.width  = totalW + 'px';
@@ -635,52 +1039,78 @@ function setupScrollers() {
   };
 }
 
-// ════════════════════════════════════════════════════════════════════
-// DRAW
-// ════════════════════════════════════════════════════════════════════
+/* ============================================================================
+ * SECTION 9 — Zoom & Fit
+ * ========================================================================== */
+function setZoom(delta = 0) {
+  const el = document.getElementById('zx');
+  if (delta) el.value = Math.max(MIN_CELL, Math.min(MAX_CELL, +el.value + delta));
+  cellW = +el.value;
+  document.getElementById('zoom-val').textContent = cellW + 'px';
+  if (vis.length) { setupScrollers(); redraw(); }
+}
+
+/* Fit the entire visible program into the viewport — useful as a "super
+ * zoom out" for getting a bird's-eye view of execution. cellW is allowed
+ * below MIN_CELL here (subpixel cycles). The slider snaps to its closest
+ * integer so subsequent slider use behaves predictably. */
+function fitAll() {
+  if (!vis.length) return;
+  const vpW = document.getElementById('tlpanel').clientWidth;
+  const cycSpan = Math.max(1, cMax - cMin + 1);
+  cellW = Math.max(MIN_CELL_FIT, Math.min(MAX_CELL, vpW / cycSpan));
+  const slider = document.getElementById('zx');
+  slider.value = String(Math.max(MIN_CELL, Math.min(MAX_CELL, Math.round(cellW))));
+  document.getElementById('zoom-val').textContent =
+    (cellW < 1 ? cellW.toFixed(2) : Math.round(cellW)) + 'px';
+  scrollX = 0; scrollY = 0;
+  const scroller = document.getElementById('scroller');
+  scroller.scrollLeft = 0; scroller.scrollTop = 0;
+  setupScrollers();
+  redraw();
+}
+
+/* ============================================================================
+ * SECTION 10 — Drawing
+ * ========================================================================== */
 function redraw() {
   if (!vis.length) return;
 
-  const tlPanel   = document.getElementById('tlpanel');
-  const lblPanel  = document.getElementById('lblpanel');
-  const rulerEl   = document.getElementById('ruler');
-  const tlCanvas  = document.getElementById('tlcanvas');
+  const tlPanel  = document.getElementById('tlpanel');
+  const rulerEl  = document.getElementById('ruler');
+  const tlCanvas = document.getElementById('tlcanvas');
   const lblCanvas = document.getElementById('lblcanvas');
-  const rulerC    = document.getElementById('rulercanvas');
+  const rulerC   = document.getElementById('rulercanvas');
 
-  const vpW = tlPanel.clientWidth;
-  const vpH = tlPanel.clientHeight;
+  const vpW    = tlPanel.clientWidth;
+  const vpH    = tlPanel.clientHeight;
   const rulerW = rulerEl.clientWidth;
-  const ROW_H = getRowH();
+  const ROW_H  = getRowH();
 
-  // Size canvases to viewport
-  tlCanvas.width = vpW; tlCanvas.height = vpH;
-  lblCanvas.width  = LBL_W;
-  lblCanvas.height = vpH;
-  rulerC.width = rulerW; rulerC.height = RULER_H;
+  tlCanvas.width  = vpW;     tlCanvas.height  = vpH;
+  lblCanvas.width = LBL_W;   lblCanvas.height = vpH;
+  rulerC.width    = rulerW;  rulerC.height    = RULER_H;
 
   const ctx  = tlCanvas.getContext('2d');
   const lctx = lblCanvas.getContext('2d');
   const rctx = rulerC.getContext('2d');
 
-  ctx.clearRect(0, 0, vpW, vpH);
-  lctx.clearRect(0, 0, LBL_W, vpH);
+  ctx.clearRect (0, 0, vpW,    vpH);
+  lctx.clearRect(0, 0, LBL_W,  vpH);
   rctx.clearRect(0, 0, rulerW, RULER_H);
 
-  // Visible range
-  const ROW_H_local = getRowH();
   const firstRow = scrollY;
-  const lastRow  = Math.min(vis.length - 1, firstRow + Math.ceil(vpH / ROW_H_local) + 1);
+  const lastRow  = Math.min(vis.length - 1, firstRow + Math.ceil(vpH / ROW_H) + 1);
   const firstCyc = cMin + scrollX;
   const lastCyc  = firstCyc + Math.ceil(vpW / cellW) + 1;
 
-  // Ruler
+  /* ---- Ruler ------------------------------------------------------------- */
   rctx.fillStyle = '#1c1c1e';
   rctx.fillRect(0, 0, rulerW, RULER_H);
   rctx.font = '9px monospace';
 
-  // Per-cycle tick marks when zoomed in enough
   if (cellW >= 8) {
+    /* Per-cycle ticks when zoomed in enough. */
     for (let c = firstCyc; c <= lastCyc; c++) {
       const x = (c - firstCyc) * cellW;
       rctx.fillStyle = c % 5 === 0 ? '#383838' : '#252525';
@@ -688,59 +1118,52 @@ function redraw() {
     }
   }
 
-  // Numbered labels — step adapts to zoom
   const cycStep = cellW >= 20 ? 1 : cellW >= 8 ? 5 : cellW < 3 ? 50 : cellW < 6 ? 20 : 10;
-  const cStart = Math.ceil(firstCyc / cycStep) * cycStep;
+  const cStart  = Math.ceil(firstCyc / cycStep) * cycStep;
   for (let c = cStart; c <= lastCyc; c += cycStep) {
     const x = (c - firstCyc) * cellW;
-    rctx.fillStyle = '#383838';
-    rctx.fillRect(x, 0, 1, RULER_H);
-    rctx.fillStyle = '#909090';
-    rctx.fillText(c, x + 2, RULER_H - 3);
+    rctx.fillStyle = '#383838'; rctx.fillRect(x, 0, 1, RULER_H);
+    rctx.fillStyle = '#909090'; rctx.fillText(c, x + 2, RULER_H - 3);
   }
 
-  // Rows
+  /* ---- Rows -------------------------------------------------------------- */
   for (let r = firstRow; r <= lastRow; r++) {
     const ins = vis[r];
-    const ry  = (r - firstRow) * ROW_H_local;
+    const ry  = (r - firstRow) * ROW_H;
     const even = r % 2 === 0;
 
-    // Row bg
-    ctx.fillStyle  = even ? '#1c1c1e' : '#1a1a1c';
-    ctx.fillRect(0, ry, vpW, ROW_H_local);
-    lctx.fillStyle = even ? '#1e1e21' : '#1c1c1e';
-    lctx.fillRect(0, ry, LBL_W, ROW_H_local);
+    /* Row backgrounds. */
+    ctx.fillStyle  = even ? '#1c1c1e' : '#1a1a1c'; ctx.fillRect (0, ry, vpW,   ROW_H);
+    lctx.fillStyle = even ? '#1e1e21' : '#1c1c1e'; lctx.fillRect(0, ry, LBL_W, ROW_H);
 
-    // Label: seq number
+    /* Label panel: seq, PC, instruction text. */
     lctx.fillStyle = '#383838';
-    lctx.font = '9px monospace';
-    lctx.fillText(String(ins.seq).padStart(4,' '), 2, ry + ROW_H_local - 3);
-
-    // Label: PC
+    lctx.font      = '9px monospace';
+    lctx.fillText(String(ins.seq).padStart(4, ' '), 2,  ry + ROW_H - 3);
     lctx.fillStyle = '#505070';
-    lctx.fillText(ins.pc, 36, ry + ROW_H_local - 3);
-
-    // Label: instruction text
-    lctx.fillStyle = ins.flushed ? '#804040' : ins.isControl ? '#50a0d0' : fuTextColor(ins.fu);
+    lctx.fillText(ins.pc,                            36, ry + ROW_H - 3);
+    lctx.fillStyle = ins.flushed   ? '#804040'
+                   : ins.isControl ? '#50a0d0'
+                   :                 fuTextColor(ins.fu);
     lctx.font = '10px -apple-system,sans-serif';
-    const lbl = ins.instr.length > 22 ? ins.instr.slice(0,21)+'…' : ins.instr;
-    lctx.fillText(lbl, 92, ry + ROW_H_local - 2);
+    const lbl = ins.instr.length > 22 ? ins.instr.slice(0, 21) + '…' : ins.instr;
+    lctx.fillText(lbl, 92, ry + ROW_H - 2);
 
-    // Pipeline bars
+    /* Pipeline bars (the meat of the row). */
     drawBars(ctx, ins, ry, firstCyc);
 
-    // Cycle grid lines — per-cycle when zoomed in
+    /* Faint cycle grid. */
     if (cellW >= 8) {
       for (let c = firstCyc; c <= lastCyc; c++) {
         const x = (c - firstCyc) * cellW;
         ctx.fillStyle = c % 5 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)';
-        ctx.fillRect(x, ry, 1, ROW_H_local);
+        ctx.fillRect(x, ry, 1, ROW_H);
       }
     } else {
       for (let c = cStart; c <= lastCyc; c += cycStep) {
         const x = (c - firstCyc) * cellW;
         ctx.fillStyle = 'rgba(255,255,255,0.03)';
-        ctx.fillRect(x, ry, 1, ROW_H_local);
+        ctx.fillRect(x, ry, 1, ROW_H);
       }
     }
   }
@@ -751,9 +1174,10 @@ function redraw() {
 
 function drawBars(ctx, ins, ry, firstCyc) {
   const ROW_H = getRowH();
-  const h = ROW_H - 2, y0 = ry + 1;
+  const h     = ROW_H - 2;
+  const y0    = ry + 1;
 
-  // Draw a filled segment and optionally a text label inside it
+  /* Filled segment with optional centered label. */
   function seg(c0, c1, color, hFrac = 1.0, label = '') {
     if (c0 === null || c1 === null || c1 <= c0) return;
     const x = (c0 - firstCyc) * cellW;
@@ -763,21 +1187,17 @@ function drawBars(ctx, ins, ry, firstCyc) {
     const yy = y0 + h - hh;
     ctx.fillStyle = color;
     ctx.fillRect(x, yy, w, hh);
-
     if (label && cellW >= 14 && w >= 14) {
       const fs = Math.min(10, Math.max(8, hh - 3));
       ctx.font = `${fs}px -apple-system,sans-serif`;
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x + 1, yy, w - 2, hh);
-      ctx.clip();
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 1, yy, w - 2, hh); ctx.clip();
       ctx.fillText(label, x + 3, yy + hh - 2);
       ctx.restore();
     }
   }
 
-  // Thin strip drawn at a fixed pixel offset from top — for overlaid cache/mem events
+  /* Thin overlay strip at a fixed pixel offset from top — for memory events. */
   function strip(c0, c1, color, yOff, stripH, label = '') {
     if (c0 === null || c1 === null || c1 <= c0) return;
     const x = (c0 - firstCyc) * cellW;
@@ -786,110 +1206,104 @@ function drawBars(ctx, ins, ry, firstCyc) {
     const yy = y0 + yOff;
     ctx.fillStyle = color;
     ctx.fillRect(x, yy, w, stripH);
-
     if (label && cellW >= 14 && w >= 14) {
       ctx.font = `${Math.min(stripH, 9)}px -apple-system,sans-serif`;
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x + 1, yy, w - 2, stripH);
-      ctx.clip();
+      ctx.save(); ctx.beginPath(); ctx.rect(x + 1, yy, w - 2, stripH); ctx.clip();
       ctx.fillText(label, x + 2, yy + stripH - 1);
       ctx.restore();
     }
   }
 
-  // Flushed instructions get dimmed color on all stages
+  /* Flushed instructions get the dimmed color on every stage. */
   const isFlushed = ins.flushed;
   const sc = (color) => isFlushed ? COL.flushed : color;
 
-  // Execution color: flushed > floatmem > float > mem > branch > int
+  /* Execute-stage color: flushed > floatmem > float > mem > branch > int */
   const excol = isFlushed                    ? COL.flushed
               : ins.fu?.includes('FloatMem') ? COL.mem
               : ins.fu?.includes('Float')    ? COL.fp
               : ins.fu?.includes('Mem')      ? COL.mem
               : ins.isControl                ? COL.branch
-              : COL.int;
+              :                                COL.int;
 
-  // Execute label: instruction mnemonic
+  /* Execute label: instruction mnemonic (or ld/st/fld/fsd for memory). */
   const mnemonic = ins.instr ? ins.instr.split(/\s+/)[0] : '';
-  const fuTag = isFlushed ? '✗' + mnemonic
+  const fuTag = isFlushed                    ? '✗' + mnemonic
               : ins.fu?.includes('FloatMem') ? (ins.fu.includes('Read') ? 'fld' : 'fsd')
-              : ins.fu?.includes('Float')    ? ins.fu.replace('Float','').toLowerCase()
+              : ins.fu?.includes('Float')    ? ins.fu.replace('Float', '').toLowerCase()
               : ins.fu?.includes('Mem')      ? (ins.fu.includes('Read') ? 'ld' : 'st')
-              : mnemonic || 'ex';
+              : (mnemonic || 'ex');
 
-  // ── Pipeline bars (drawn back-to-front, lower layers first) ──
+  /* ---- Pipeline bars (drawn back-to-front) ------------------------------- */
 
-  // 8. Commit (1c)
+  /* 8. Commit (1 cycle). */
   if (ins.cm !== null) seg(ins.cm, ins.cm + 1, sc(COL.cm), 1.0, 'cm');
 
-  // 7. Commit wait: fuDone → cm
+  /* 7. Commit wait: fuDone → cm. */
   if (ins.cm !== null && ins.fuDone !== null && ins.cm > ins.fuDone)
     seg(ins.fuDone, ins.cm, sc(COL.wb), 0.75, 'wb');
 
-  // 6. FU execution: ex → fuDone
-  if (ins.ex !== null) seg(ins.ex, ins.fuDone ?? ins.ex + 1, excol, 1.0, fuTag);
+  /* 6. FU execution: ex → fuDone. */
+  if (ins.ex !== null)
+    seg(ins.ex, ins.fuDone ?? ins.ex + 1, excol, 1.0, fuTag);
 
-  // 5+4. Execute input buffer: dtoe → ex (includes scoreboard wait)
+  /* 5+4. Execute input buffer: dtoe → ex (includes scoreboard wait). */
   if (ins.dtoe !== null && ins.ex !== null && ins.ex > ins.dtoe)
     seg(ins.dtoe, ins.ex, sc(COL.exbuf), 0.65, 'exec buf');
 
-  // 3. dToE transit
+  /* 3. dToE transit. */
   if (ins.dec !== null && ins.dtoe !== null && ins.dtoe > ins.dec + 1)
     seg(ins.dec + 1, ins.dtoe, sc(COL.dtoe), 0.60, 'dToE');
 
-  // 2. Decode (1c)
+  /* 2. Decode (1 cycle). */
   if (ins.dec !== null) seg(ins.dec, ins.dec + 1, sc(COL.dec), 0.65, 'dec');
 
-  // 1b. Decode input buffer
+  /* 1b. Decode input buffer. */
   const decBufStart = ins.f2 !== null ? ins.f2 + PIPE_F2_DEC : null;
   if (decBufStart !== null && ins.dec !== null && ins.dec > decBufStart)
     seg(decBufStart, ins.dec, sc(COL.decbuf), 0.55, 'dbuf');
 
-  // 1a. Fetch2 input buffer: (f1 + PIPE_F1_F2) → f2
+  /* 1a. Fetch2 input buffer: (f1 + PIPE_F1_F2) → f2. */
   const f2BufStart = ins.f1 !== null ? ins.f1 + PIPE_F1_F2 : null;
   if (f2BufStart !== null && ins.f2 !== null && ins.f2 > f2BufStart)
     seg(f2BufStart, ins.f2, sc(COL.f2buf), 0.50, 'f2buf');
 
-  // 1. Fetch2 (1c)
+  /* 1. Fetch2 (1 cycle). */
   if (ins.f2 !== null) seg(ins.f2, ins.f2 + 1, sc(COL.f2), 0.55, 'f2');
 
-  // 0c. ICache stall
+  /* 0c. ICache stall. */
   if (ins.f1req !== null && ins.f1 !== null && ins.f1 > ins.f1req + 1)
     seg(ins.f1req + 1, ins.f1, sc(COL.f1stall), 0.50, 'ic stall');
 
-  // 0b. Fetch1 response
+  /* 0b. Fetch1 response. */
   if (ins.f1 !== null) seg(ins.f1, ins.f1 + 1, sc(COL.f1), 0.55, 'f1');
 
-  // 0a. Fetch1 request — only when ICache miss
+  /* 0a. Fetch1 request — drawn only when the line missed (otherwise the
+   *     response bar is enough). */
   if (ins.f1req !== null && ins.icMiss)
     seg(ins.f1req, ins.f1req + 1, sc(COL.f1miss), 0.55, 'f1✗');
 
-  // ── Memory overlays (drawn on top, as thin strips) ──
+  /* ---- Memory overlays (thin strips on top of execute bar) --------------- */
   const sH = Math.max(3, Math.round(h * 0.22));
-
-  if (ins.memIssue !== null && ins.memComplete !== null)
-    strip(ins.memIssue, ins.memComplete, COL.memreq, 0, sH, 'mem');
-
+  if (ins.memIssue   !== null && ins.memComplete !== null)
+    strip(ins.memIssue, ins.memComplete, COL.memreq, 0,        sH, 'mem');
   if (ins.dcMiss === true && ins.memIssue !== null)
-    strip(ins.memIssue, ins.memIssue + 1, COL.dcmiss, 0, sH, 'dc✗');
+    strip(ins.memIssue, ins.memIssue + 1, COL.dcmiss, 0,        sH, 'dc✗');
+  if (ins.sbPush     !== null && ins.sbDelete    !== null)
+    strip(ins.sbPush,   ins.sbDelete,     COL.sbbuf,  sH + 1,   sH, 'sb');
 
-  if (ins.sbPush !== null && ins.sbDelete !== null)
-    strip(ins.sbPush, ins.sbDelete, COL.sbbuf, sH + 1, sH, 'sb');
-
-  // ── Branch marker (drawn last, on top of everything) ──
+  /* ---- Branch marker (red/blue stripe across the bottom of the row) ------ */
   if (ins.branchOutcome) {
-    const bCol = ins.branchOutcome === 'mispred' ? '#ff4040' : '#40c0ff';
+    const bCol   = ins.branchOutcome === 'mispred' ? '#ff4040' : '#40c0ff';
     const bLabel = ins.branchOutcome === 'mispred' ? '✗mispred' : '✓pred';
-    const bx = ((ins.ex ?? ins.flushCycle ?? ins.dec) - firstCyc) * cellW;
-    const bw = Math.max(cellW, 2);
+    const bx     = ((ins.ex ?? ins.flushCycle ?? ins.dec) - firstCyc) * cellW;
+    const bw     = Math.max(cellW, 2);
     if (bx >= 0 && bx < 20000) {
       ctx.fillStyle = bCol;
       ctx.fillRect(bx, y0 + h - 3, bw, 3);
       if (cellW >= 14) {
         ctx.font = '8px -apple-system,sans-serif';
-        ctx.fillStyle = bCol;
         ctx.fillText(bLabel, bx, y0 - 1);
       }
     }
@@ -897,132 +1311,140 @@ function drawBars(ctx, ins, ry, firstCyc) {
 }
 
 function fuTextColor(fu) {
-  if (!fu) return '#70d090';
+  if (!fu)                     return '#70d090';
   if (fu.includes('FloatMem')) return '#e0a030';
   if (fu.includes('Float'))    return '#5aabf0';
   if (fu.includes('Mem'))      return '#e0a030';
   return '#70d090';
 }
 
-// ════════════════════════════════════════════════════════════════════
-// ZOOM
-// ════════════════════════════════════════════════════════════════════
-function setZoom(delta = 0) {
-  const el = document.getElementById('zx');
-  if (delta) el.value = Math.max(MIN_CELL, Math.min(MAX_CELL, +el.value + delta));
-  cellW = +el.value;
-  document.getElementById('zoom-val').textContent = cellW + 'px';
-  if (vis.length) { setupScrollers(); redraw(); }
-}
+/* ============================================================================
+ * SECTION 11 — Mouse (status bar, tooltip, hover crosshair)
+ *
+ * Mouse handlers are bound to #scroller, NOT #tlcanvas.  Both elements have
+ * position:absolute and inset:0 inside #tlpanel; #scroller comes later in
+ * the DOM, so it sits on top in the default stacking order and intercepts
+ * every event.  Binding to the canvas would silently do nothing.
+ * ========================================================================== */
+const scroller = document.getElementById('scroller');
 
-// ════════════════════════════════════════════════════════════════════
-// TOOLTIP
-// ════════════════════════════════════════════════════════════════════
-document.getElementById('tlcanvas').addEventListener('mousemove', ev => {
+scroller.addEventListener('mousemove', ev => {
   if (!vis.length) return;
-  const rect = document.getElementById('tlcanvas').getBoundingClientRect();
-  const mx = ev.clientX - rect.left;
-  const my = ev.clientY - rect.top;
+  const rect = document.getElementById('tlpanel').getBoundingClientRect();
+  const mx   = ev.clientX - rect.left;
+  const my   = ev.clientY - rect.top;
+
+  /* Crosshair tracks the cursor. */
+  const ch = document.getElementById('crosshair');
+  ch.style.display = 'block';
+  ch.style.left    = mx + 'px';
 
   const row = scrollY + Math.floor(my / getRowH());
   const cyc = cMin + scrollX + Math.floor(mx / cellW);
 
   document.getElementById('s-c').textContent = cyc;
 
-  if (row >= 0 && row < vis.length) {
-    const ins = vis[row];
-    document.getElementById('s-i').textContent = ins.instr;
-    document.getElementById('s-f').textContent = ins.fu;
-    document.getElementById('s-p').textContent = ins.pc;
+  if (row < 0 || row >= vis.length) return;
+  const ins = vis[row];
+  document.getElementById('s-i').textContent = ins.instr;
+  document.getElementById('s-f').textContent = ins.fu;
+  document.getElementById('s-p').textContent = ins.pc;
 
-    const stage = getStage(ins, cyc);
-    const fuLat = ins.ex !== null && ins.fuDone !== null ? ins.fuDone - ins.ex : null;
-    const cmWait = ins.fuDone !== null && ins.cm !== null ? ins.cm - ins.fuDone : null;
-    const dbuf = ins.f2 !== null && ins.dec !== null ? ins.dec - ins.f2 - PIPE_F2_DEC : null;
-    const ebuf = ins.dtoe !== null && ins.ex !== null ? ins.ex - ins.dtoe : null;
-    const f2src = ins._real_f2 !== null ? '' : ' ~';
-    const decsrc = ins._real_dec !== null ? '' : ' ~';
+  /* The full hover tooltip is gated by the checkbox. */
+  if (!document.getElementById('tt-on').checked) return;
 
-    const icStall = ins.f1req !== null && ins.f1 !== null ? ins.f1 - ins.f1req - 1 : null;
-    const f2buf = ins.f1 !== null && ins.f2 !== null ? ins.f2 - ins.f1 - PIPE_F1_F2 : null;
+  const stage   = getStage(ins, cyc);
+  const w       = instWaits(ins);
+  const fuLat   = w.fuLat, cmWait = w.cmWait, dbuf = w.dbuf;
+  const ebuf    = w.ebuf,  icStall = w.icStall, f2buf = w.f2buf;
+  const f2src   = ins._real_f2  !== null ? '' : ' ~';
+  const decsrc  = ins._real_dec !== null ? '' : ' ~';
 
-    const tt = document.getElementById('tt');
-    tt.style.display = 'block';
-    tt.style.left = (ev.clientX + 14) + 'px';
-    tt.style.top  = (ev.clientY - 10) + 'px';
-    tt.innerHTML = `
-      <div style="font-weight:500;color:#e4e2dc">${ins.instr}</div>
-      <div style="color:#505050;font-size:10px;margin-bottom:6px">${ins.pc} · #${ins.seq}${ins.fuIdx !== null ? ' · FU'+ins.fuIdx : ''}</div>
-      <table style="border-collapse:collapse;font-size:11px">
-        <tr><td style="color:#505050;padding-right:12px">Class</td><td>${ins.fu||'—'}</td></tr>
-        <tr><td style="color:#505050">srcRegs</td><td style="color:#f0a030">${ins.src||'—'}</td></tr>
-        <tr><td style="color:#505050">destRegs</td><td style="color:#3ecf9a">${ins.dest||'—'}</td></tr>
-        <tr><td colspan=2 style="padding-top:4px"></td></tr>
-        <tr><td style="color:#505050">F1 req</td> <td>C${ins.f1req??'?'}</td></tr>
-        <tr><td style="color:#505050">F1 resp</td><td>C${ins.f1??'?'}${ins.icMiss?' <span style="color:#e05050">MISS</span>':ins.icMiss===false?' <span style="color:#3ecf9a">hit</span>':''}</td></tr>
-        <tr><td style="color:#505050">F2</td>     <td>C${ins.f2??'?'}${f2src}</td></tr>
-        <tr><td style="color:#505050">Dec</td>    <td>C${ins.dec??'?'}${decsrc}</td></tr>
-        <tr><td style="color:#505050">dToE</td>   <td>C${ins.dtoe??'?'}</td></tr>
-        <tr><td style="color:#505050">Issue</td>  <td>C${ins.ex??'?'}</td></tr>
-        <tr><td style="color:#505050">FU done</td><td>C${ins.fuDone??'?'}${ins._real_ret!==null?'':' ~'}</td></tr>
-        <tr><td style="color:#505050">Commit</td> <td>C${ins.cm??'?'}</td></tr>
-        <tr><td colspan=2 style="padding-top:3px"></td></tr>
-        <tr><td style="color:#505050">IC stall</td>
-          <td style="color:${icStall>0?'#e05050':'#a0a09a'}">${icStall!==null?(icStall>0?icStall+'c':'0c'):'—'}</td></tr>
-        <tr><td style="color:#505050">F2 buf</td>
-          <td style="color:${f2buf>2?'#e05050':f2buf>0?'#f0a030':'#a0a09a'}">${f2buf!==null?f2buf+'c':'—'}</td></tr>
-        <tr><td style="color:#505050">Dec buf</td>
-          <td style="color:${dbuf>4?'#e05050':dbuf>0?'#f0a030':'#a0a09a'}">${dbuf!==null?dbuf+'c':'—'}</td></tr>
-        <tr><td style="color:#505050">Exec buf</td>
-          <td style="color:${ebuf>8?'#e05050':ebuf>3?'#f0a030':'#a0a09a'}">${ebuf!==null?ebuf+'c':'—'}</td></tr>
-        <tr><td style="color:#505050">FU lat</td>
-          <td style="color:#a0a09a">${fuLat!==null?fuLat+'c':'—'}</td></tr>
-        <tr><td style="color:#505050">Cm wait</td>
-          <td style="color:${cmWait>6?'#e05050':cmWait>3?'#f0a030':'#a0a09a'}">${cmWait!==null?cmWait+'c':'—'}</td></tr>
-        ${ins.icMiss !== null ? `<tr><td colspan=2 style="padding-top:3px"></td></tr>
-        <tr><td style="color:#505050">ICache</td>
-          <td style="color:${ins.icMiss?'#e05050':'#3ecf9a'}">${ins.icMiss?'MISS':'hit'}</td></tr>` : ''}
-        ${ins.memIssue !== null ? `<tr><td style="color:#505050">Mem req</td>
-          <td>C${ins.memIssue}→C${ins.memComplete??'?'} (${ins.memComplete&&ins.memIssue?(ins.memComplete-ins.memIssue)+'c':'?'})</td></tr>` : ''}
-        ${ins.dcMiss !== null ? `<tr><td style="color:#505050">DCache</td>
-          <td style="color:${ins.dcMiss?'#e05050':'#3ecf9a'}">${ins.dcMiss?'MISS':'hit'}</td></tr>` : ''}
-        ${ins.sbPush !== null ? `<tr><td style="color:#505050">Store buf</td>
-          <td>C${ins.sbPush}→C${ins.sbDelete??'?'} (${ins.sbDelete&&ins.sbPush?(ins.sbDelete-ins.sbPush)+'c':'?'})</td></tr>` : ''}
-        ${ins.branchOutcome ? `<tr><td colspan=2 style="padding-top:3px"></td></tr>
+  /* Format a wait cell: value, color, and "(max N)" context so the user
+   * can see how this instruction's wait compares to the worst observed. */
+  const fmtWait = (val, max) => {
+    if (val === null) return '<td>—</td>';
+    const ctx = max > 0 ? ` <span style="color:#505050">(max ${max})</span>` : '';
+    return `<td style="color:${colorizeWait(val, max)}">${val}c${ctx}</td>`;
+  };
+
+  const tt = document.getElementById('tt');
+  tt.style.display = 'block';
+  tt.style.left    = (ev.clientX + 14) + 'px';
+  tt.style.top     = (ev.clientY - 10) + 'px';
+  tt.innerHTML = `
+    <div style="font-weight:500;color:#e4e2dc">${ins.instr}</div>
+    <div style="color:#505050;font-size:10px;margin-bottom:6px">${ins.pc} · #${ins.seq}${ins.fuIdx !== null ? ' · FU' + ins.fuIdx : ''}</div>
+    <table style="border-collapse:collapse;font-size:11px">
+      <tr><td style="color:#505050;padding-right:12px">Class</td>   <td>${ins.fu || '—'}</td></tr>
+      <tr><td style="color:#505050">srcRegs</td>                    <td style="color:#f0a030">${ins.src  || '—'}</td></tr>
+      <tr><td style="color:#505050">destRegs</td>                   <td style="color:#3ecf9a">${ins.dest || '—'}</td></tr>
+      <tr><td colspan=2 style="padding-top:4px"></td></tr>
+      <tr><td style="color:#505050">F1 req</td>   <td>C${ins.f1req ?? '?'}</td></tr>
+      <tr><td style="color:#505050">F1 resp</td>  <td>C${ins.f1    ?? '?'}${ins.icMiss ? ' <span style="color:#e05050">MISS</span>' : ins.icMiss === false ? ' <span style="color:#3ecf9a">hit</span>' : ''}</td></tr>
+      <tr><td style="color:#505050">F2</td>       <td>C${ins.f2    ?? '?'}${f2src}</td></tr>
+      <tr><td style="color:#505050">Dec</td>      <td>C${ins.dec   ?? '?'}${decsrc}</td></tr>
+      <tr><td style="color:#505050">dToE</td>     <td>C${ins.dtoe  ?? '?'}</td></tr>
+      <tr><td style="color:#505050">Issue</td>    <td>C${ins.ex    ?? '?'}</td></tr>
+      <tr><td style="color:#505050">FU done</td>  <td>C${ins.fuDone?? '?'}${ins._real_ret !== null ? '' : ' ~'}</td></tr>
+      <tr><td style="color:#505050">Commit</td>   <td>C${ins.cm    ?? '?'}</td></tr>
+      <tr><td colspan=2 style="padding-top:3px"></td></tr>
+      <tr><td style="color:#505050">IC stall</td> ${fmtWait(icStall, pipelineStats.icStall)}</tr>
+      <tr><td style="color:#505050">F2 buf</td>   ${fmtWait(f2buf,   pipelineStats.f2buf)}</tr>
+      <tr><td style="color:#505050">Dec buf</td>  ${fmtWait(dbuf,    pipelineStats.dbuf)}</tr>
+      <tr><td style="color:#505050">Exec buf</td> ${fmtWait(ebuf,    pipelineStats.ebuf)}</tr>
+      <tr><td style="color:#505050">FU lat</td>   ${fmtWait(fuLat,   pipelineStats.fuLat)}</tr>
+      <tr><td style="color:#505050">Cm wait</td>  ${fmtWait(cmWait,  pipelineStats.cmWait)}</tr>
+      ${ins.icMiss !== null ? `<tr><td colspan=2 style="padding-top:3px"></td></tr>
+        <tr><td style="color:#505050">ICache</td><td style="color:${ins.icMiss ? '#e05050' : '#3ecf9a'}">${ins.icMiss ? 'MISS' : 'hit'}</td></tr>` : ''}
+      ${ins.memIssue !== null ? `<tr><td style="color:#505050">Mem req</td>
+        <td>C${ins.memIssue}→C${ins.memComplete ?? '?'} (${ins.memComplete && ins.memIssue ? (ins.memComplete - ins.memIssue) + 'c' : '?'})</td></tr>` : ''}
+      ${ins.dcMiss !== null ? `<tr><td style="color:#505050">DCache</td>
+        <td style="color:${ins.dcMiss ? '#e05050' : '#3ecf9a'}">${ins.dcMiss ? 'MISS' : 'hit'}</td></tr>` : ''}
+      ${ins.sbPush !== null ? `<tr><td style="color:#505050">Store buf</td>
+        <td>C${ins.sbPush}→C${ins.sbDelete ?? '?'} (${ins.sbDelete && ins.sbPush ? (ins.sbDelete - ins.sbPush) + 'c' : '?'})</td></tr>` : ''}
+      ${ins.branchOutcome ? `<tr><td colspan=2 style="padding-top:3px"></td></tr>
         <tr><td style="color:#505050">Branch</td>
-          <td style="color:${ins.branchOutcome==='mispred'?'#ff4040':'#40c0ff'}">${
-            ins.branchOutcome==='mispred'?'✗ Misprediction (pipeline flush)':'✓ Predicción correcta'}</td></tr>
-        ${ins.flushCycle?`<tr><td style="color:#505050">Redirige en</td><td>C${ins.flushCycle}</td></tr>`:''}` : ''}
-      </table>
-      ${stage ? `<div style="margin-top:5px;font-size:11px;color:${stageColor(stage)}">● ${stage}</div>` : ''}
-      ${ins.flushed ? '<div style="margin-top:4px;font-size:10px;color:#ff4040">✗ Instrucción flusheada (misprediction) — nunca commiteada</div>' : ''}
-      ${ins.estimated ? '<div style="margin-top:4px;font-size:10px;color:#505050">⚠ Etapas estimadas (sin datos reales en traza)</div>' : ''}
-    `;
+          <td style="color:${ins.branchOutcome === 'mispred' ? '#ff4040' : '#40c0ff'}">${
+            ins.branchOutcome === 'mispred' ? '✗ Misprediction (pipeline flush)' : '✓ Correctly predicted'}</td></tr>
+        ${ins.flushCycle ? `<tr><td style="color:#505050">Redirects at</td><td>C${ins.flushCycle}</td></tr>` : ''}` : ''}
+    </table>
+    ${stage     ? `<div style="margin-top:5px;font-size:11px;color:${stageColor(stage)}">● ${stage}</div>` : ''}
+    ${ins.flushed   ? `<div style="margin-top:4px;font-size:10px;color:#ff4040">✗ Flushed instruction (misprediction) — never committed</div>` : ''}
+    ${ins.estimated ? `<div style="margin-top:4px;font-size:10px;color:#505050">⚠ Stages estimated (no real data in trace)</div>` : ''}
+  `;
+});
+
+scroller.addEventListener('mouseleave', () => {
+  document.getElementById('tt').style.display        = 'none';
+  document.getElementById('crosshair').style.display = 'none';
+});
+
+function onTooltipToggle() {
+  /* When unchecked, hide the tooltip immediately so it doesn't linger. */
+  if (!document.getElementById('tt-on').checked) {
+    document.getElementById('tt').style.display = 'none';
   }
-});
+}
 
-document.getElementById('tlcanvas').addEventListener('mouseleave', () => {
-  document.getElementById('tt').style.display = 'none';
-});
-
+/* Map a cycle within an instruction's lifetime to its current pipeline stage. */
 function getStage(ins, c) {
-  // Fetch1 request (1 cycle) — if miss, this is where the miss happened
-  if (ins.f1req !== null && ins.f1 !== null && ins.f1 > ins.f1req + 1 && c >= ins.f1req && c < ins.f1req + 1)
+  if (ins.f1req !== null && ins.f1 !== null && ins.f1 > ins.f1req + 1
+      && c >= ins.f1req && c < ins.f1req + 1)
     return ins.icMiss ? 'ICache miss' : 'Fetch1 request';
-  // ICache stall (waiting for memory after miss)
   if (ins.f1req !== null && ins.f1 !== null && c >= ins.f1req + 1 && c < ins.f1) return 'ICache stall';
-  // Fetch1 response (data arrived)
-  if (ins.f1 !== null && c >= ins.f1 && c < ins.f1 + 1) return 'Fetch1';
-  // Fetch2 input buffer
+  if (ins.f1   !== null && c >= ins.f1   && c < ins.f1   + 1)                     return 'Fetch1';
+
   const f2BufS = ins.f1 !== null ? ins.f1 + PIPE_F1_F2 : null;
-  if (f2BufS !== null && ins.f2 !== null && c >= f2BufS && c < ins.f2) return 'Fetch2 input buffer';
-  if (ins.f2 !== null && c >= ins.f2 && c < ins.f2 + 1) return 'Fetch2';
-  // Decode input buffer
-  const decBufStart = ins.f2 !== null ? ins.f2 + PIPE_F2_DEC : null;
-  if (decBufStart !== null && ins.dec !== null && c >= decBufStart && c < ins.dec) return 'Decode input buffer';
-  if (ins.dec !== null && c >= ins.dec && c < ins.dec + 1) return 'Decode';
-  if (ins.dec !== null && ins.dtoe !== null && c >= ins.dec + 1 && c < ins.dtoe) return 'dToE transit';
-  if (ins.dtoe !== null && ins.ex !== null && c >= ins.dtoe && c < ins.ex) return 'Execute input buffer';
+  if (f2BufS !== null && ins.f2 !== null && c >= f2BufS && c < ins.f2)            return 'Fetch2 input buffer';
+  if (ins.f2 !== null && c >= ins.f2 && c < ins.f2 + 1)                            return 'Fetch2';
+
+  const decBufS = ins.f2 !== null ? ins.f2 + PIPE_F2_DEC : null;
+  if (decBufS !== null && ins.dec !== null && c >= decBufS && c < ins.dec)        return 'Decode input buffer';
+  if (ins.dec !== null && c >= ins.dec && c < ins.dec + 1)                         return 'Decode';
+  if (ins.dec !== null && ins.dtoe !== null && c >= ins.dec + 1 && c < ins.dtoe)  return 'dToE transit';
+  if (ins.dtoe !== null && ins.ex !== null && c >= ins.dtoe && c < ins.ex)        return 'Execute input buffer';
+
   const fd = ins.fuDone ?? (ins.ex !== null ? ins.ex + 1 : null);
   if (ins.ex !== null && fd !== null && c >= ins.ex && c < fd) {
     if (ins.fu?.includes('FloatMem')) return 'Execute Mem FP';
@@ -1031,45 +1453,55 @@ function getStage(ins, c) {
     if (ins.isControl)                return 'Execute Branch';
     return 'Execute Int';
   }
-  if (fd !== null && ins.cm !== null && c >= fd && c < ins.cm) return 'Commit wait';
-  if (ins.cm && c >= ins.cm && c < ins.cm + 1) return 'Commit';
+  if (fd !== null && ins.cm !== null && c >= fd && c < ins.cm)                    return 'Commit wait';
+  if (ins.cm && c >= ins.cm && c < ins.cm + 1)                                     return 'Commit';
   return null;
 }
-function stageColor(s) {
-  const m = { 'Fetch1 request':'#5aabf0','ICache miss':'#e04040','ICache stall':'#c03030',
-    'Fetch1':'#5aabf0',
-    'Fetch2 input buffer':'#3070a0','Fetch2':'#4090d0',
-    'Decode input buffer':'#7050c0',
-    'Decode':'#9080e0',
-    'dToE transit':'#30a0a0',
-    'Execute input buffer':'#4080b0',
 
-    'Execute Int':'#3ecf9a','Execute Branch':'#a060d0',
-    'Execute FP':'#5aabf0',
-    'Execute Mem':'#f0a030','Execute Mem FP':'#f0a030',
-    'Commit wait':'#30a090','Commit':'#2cb060' };
+function stageColor(s) {
+  const m = {
+    'Fetch1 request':       '#5aabf0',
+    'ICache miss':          '#e04040',
+    'ICache stall':         '#c03030',
+    'Fetch1':               '#5aabf0',
+    'Fetch2 input buffer':  '#3070a0',
+    'Fetch2':               '#4090d0',
+    'Decode input buffer':  '#7050c0',
+    'Decode':               '#9080e0',
+    'dToE transit':         '#30a0a0',
+    'Execute input buffer': '#4080b0',
+    'Execute Int':          '#3ecf9a',
+    'Execute Branch':       '#a060d0',
+    'Execute FP':           '#5aabf0',
+    'Execute Mem':          '#f0a030',
+    'Execute Mem FP':       '#f0a030',
+    'Commit wait':          '#30a090',
+    'Commit':               '#2cb060',
+  };
   return m[s] || '#888';
 }
 
-// ════════════════════════════════════════════════════════════════════
-// KEYBOARD SHORTCUTS
-// ════════════════════════════════════════════════════════════════════
+/* ============================================================================
+ * SECTION 12 — Keyboard shortcuts
+ * ========================================================================== */
 document.addEventListener('keydown', e => {
   if (!vis.length) return;
-  const scroller = document.getElementById('scroller');
-  if (e.key === '+' || e.key === '=') { setZoom(e.ctrlKey ? +1 : +4); e.preventDefault(); }
-  if (e.key === '-')                  { setZoom(e.ctrlKey ? -1 : -4); e.preventDefault(); }
-  if (e.key === 'ArrowRight') { scroller.scrollLeft += cellW * 10; e.preventDefault(); }
-  if (e.key === 'ArrowLeft')  { scroller.scrollLeft -= cellW * 10; e.preventDefault(); }
-  if (e.key === 'ArrowDown')  { scroller.scrollTop  += getRowH() * 5;  e.preventDefault(); }
-  if (e.key === 'ArrowUp')    { scroller.scrollTop  -= getRowH() * 5;  e.preventDefault(); }
-  if (e.key === 'Home')       { scroller.scrollLeft = 0; e.preventDefault(); }
-  if (e.key === 'End')        { scroller.scrollLeft = scroller.scrollWidth; e.preventDefault(); }
+  const sc = document.getElementById('scroller');
+  switch (e.key) {
+    case '+': case '=':   setZoom(e.ctrlKey ? +1 : +4); e.preventDefault(); break;
+    case '-':             setZoom(e.ctrlKey ? -1 : -4); e.preventDefault(); break;
+    case 'ArrowRight':    sc.scrollLeft += cellW   * 10; e.preventDefault(); break;
+    case 'ArrowLeft':     sc.scrollLeft -= cellW   * 10; e.preventDefault(); break;
+    case 'ArrowDown':     sc.scrollTop  += getRowH() * 5; e.preventDefault(); break;
+    case 'ArrowUp':       sc.scrollTop  -= getRowH() * 5; e.preventDefault(); break;
+    case 'Home':          sc.scrollLeft = 0;             e.preventDefault(); break;
+    case 'End':           sc.scrollLeft = sc.scrollWidth; e.preventDefault(); break;
+  }
 });
 
-// ════════════════════════════════════════════════════════════════════
-// RESIZE
-// ════════════════════════════════════════════════════════════════════
+/* ============================================================================
+ * SECTION 13 — Resize
+ * ========================================================================== */
 new ResizeObserver(() => { if (vis.length) redraw(); })
   .observe(document.getElementById('tlpanel'));
 </script>
