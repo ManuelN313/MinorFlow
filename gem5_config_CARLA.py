@@ -1,5 +1,6 @@
 import argparse
 
+from m5.params import NULL
 from gem5.components.boards.simple_board import SimpleBoard
 from gem5.components.processors.base_cpu_core import BaseCPUCore
 from gem5.components.processors.base_cpu_processor import BaseCPUProcessor
@@ -66,37 +67,37 @@ class RISCVFUPool(MinorFUPool):
         int_div_ops = ['IntDiv']
         int_div = MinorFU()
         int_div.opClasses = minorMakeOpClassSet(int_div_ops)
-        int_div.opLat = 35
-        int_div.issueLat = 35 
+        int_div.opLat = 20
+        int_div.issueLat = 20 
 
-        fp_fast_ops = ['FloatAdd', 'FloatMult']
-        fp_fast = MinorFU(
-            opClasses=minorMakeOpClassSet(fp_fast_ops),
+        fp_fast_ops_A = ['FloatAdd', 'FloatCvt']
+        fp_fast_A = MinorFU(
+            opClasses=minorMakeOpClassSet(fp_fast_ops_A),
             opLat=3, issueLat=1
         )
 
-        fp_cvt = ['FloatCvt']
-        fp_cvt = MinorFU(
-            opClasses=minorMakeOpClassSet(fp_cvt),
-            opLat=4, issueLat=1 
+        fp_fast_ops_B = ['FloatMult', 'FloatMultAcc']
+        fp_fast_B = MinorFU(
+            opClasses=minorMakeOpClassSet(fp_fast_ops_B),
+            opLat=4, issueLat=1
         )
 
         fp_sqrt = ['FloatSqrt']
         fp_sqrt = MinorFU(
             opClasses=minorMakeOpClassSet(fp_sqrt),
-            opLat=20, issueLat=18
+            opLat=30, issueLat=25
         )
         
         fp_div_ops = ['FloatDiv']
         fp_div = MinorFU(
             opClasses=minorMakeOpClassSet(fp_div_ops),
-            opLat=15, issueLat=12 
+            opLat=25, issueLat=22 
         )
 
         fp_cmp_ops = ['FloatCmp']
         fp_cmp = MinorFU(
             opClasses=minorMakeOpClassSet(fp_cmp_ops),
-            opLat=5, issueLat=1
+            opLat=2, issueLat=1
         )
         
         mem_ops = ['MemRead', 'MemWrite']
@@ -106,86 +107,86 @@ class RISCVFUPool(MinorFUPool):
         mem_fu.issueLat = 1
 
         simd_int_fast_ops = [
-            "SimdAdd", "SimdAlu", "SimdCmp", "SimdShift", 
-            "SimdMisc", "SimdExt", "SimdConfig", "FloatMisc"
+            'SimdAdd', 'SimdAlu', 'SimdCmp', 'SimdShift', 
+            'SimdMisc', 'SimdExt', 'SimdConfig', 'FloatMisc'
         ]
         simd_int_fast = MinorDefaultFloatSimdFU()
         simd_int_fast.opClasses = minorMakeOpClassSet(simd_int_fast_ops)
-        simd_int_fast.timings = [MinorFUTiming(description="SimdIntFast", srcRegsRelativeLats=[2])]
+        simd_int_fast.timings = [MinorFUTiming(description='SimdIntFast', srcRegsRelativeLats=[2])]
         simd_int_fast.opLat = 2
         simd_int_fast.issueLat = 1
 
         simd_complex_ops = [
-            "FloatMultAcc", "SimdAddAcc", "SimdCvt", "SimdMult", "SimdMultAcc",
-            "SimdFloatAdd", "SimdFloatAlu", "SimdFloatCmp", "SimdFloatCvt",
-            "SimdFloatMisc", "SimdFloatMult", "SimdFloatMultAcc", "SimdFloatExt",
-            "SimdReduceAdd", "SimdReduceAlu", "SimdReduceCmp", 
-            "SimdFloatReduceAdd", "SimdFloatReduceCmp",
-            "SimdAes", "SimdAesMix", "SimdSha1Hash", "SimdSha1Hash2", 
-            "SimdSha256Hash", "SimdSha256Hash2", "SimdShaSigma2", "SimdShaSigma3"
+            'SimdAddAcc', 'SimdCvt', 'SimdMult', 'SimdMultAcc',
+            'SimdFloatAdd', 'SimdFloatAlu', 'SimdFloatCmp', 'SimdFloatCvt',
+            'SimdFloatMisc', 'SimdFloatMult', 'SimdFloatMultAcc', 'SimdFloatExt',
+            'SimdReduceAdd', 'SimdReduceAlu', 'SimdReduceCmp', 
+            'SimdFloatReduceAdd', 'SimdFloatReduceCmp',
+            'SimdAes', 'SimdAesMix', 'SimdSha1Hash', 'SimdSha1Hash2', 
+            'SimdSha256Hash', 'SimdSha256Hash2', 'SimdShaSigma2', 'SimdShaSigma3'
         ]
         simd_complex = MinorDefaultFloatSimdFU()
         simd_complex.opClasses = minorMakeOpClassSet(simd_complex_ops)
-        simd_complex.timings = [MinorFUTiming(description="SimdComplex", srcRegsRelativeLats=[2])]
+        simd_complex.timings = [MinorFUTiming(description='SimdComplex', srcRegsRelativeLats=[2])]
         simd_complex.opLat = 4
         simd_complex.issueLat = 1
 
         simd_matrix_ops = [
-            "Matrix", "MatrixMov", "MatrixOP", 
-            "SimdMatMultAcc", "SimdFloatMatMultAcc"
+            'Matrix', 'MatrixMov', 'MatrixOP', 
+            'SimdMatMultAcc', 'SimdFloatMatMultAcc'
         ]
         simd_matrix = MinorDefaultFloatSimdFU()
         simd_matrix.opClasses = minorMakeOpClassSet(simd_matrix_ops)
-        simd_matrix.timings = [MinorFUTiming(description="SimdMatrix", srcRegsRelativeLats=[2])]
+        simd_matrix.timings = [MinorFUTiming(description='SimdMatrix', srcRegsRelativeLats=[2])]
         simd_matrix.opLat = 6
         simd_matrix.issueLat = 2
 
         simd_div_sqrt_ops = [
-            "SimdDiv", "SimdSqrt", "SimdFloatDiv", "SimdFloatSqrt"
+            'SimdDiv', 'SimdSqrt', 'SimdFloatDiv', 'SimdFloatSqrt'
         ]
         simd_div_sqrt = MinorDefaultFloatSimdFU()
         simd_div_sqrt.opClasses = minorMakeOpClassSet(simd_div_sqrt_ops)
-        simd_div_sqrt.timings = [MinorFUTiming(description="SimdDivSqrt", srcRegsRelativeLats=[2])]
+        simd_div_sqrt.timings = [MinorFUTiming(description='SimdDivSqrt', srcRegsRelativeLats=[2])]
         simd_div_sqrt.opLat = 15
         simd_div_sqrt.issueLat = 12
 
-        pred_ops = ["SimdPredAlu"]
+        pred_ops = ['SimdPredAlu']
         pred = MinorDefaultPredFU()
         pred.opClasses = minorMakeOpClassSet(pred_ops)
-        pred.timings = [MinorFUTiming(description="Pred", srcRegsRelativeLats=[2])]
+        pred.timings = [MinorFUTiming(description='Pred', srcRegsRelativeLats=[2])]
         pred.opLat = 1
         pred.issueLat = 1
 
         vec_mem_fast_ops = [
-            "FloatMemRead", "FloatMemWrite", 
-            "SimdUnitStrideLoad", "SimdUnitStrideStore",
-            "SimdUnitStrideMaskLoad", "SimdUnitStrideMaskStore",
-            "SimdUnitStrideFaultOnlyFirstLoad", 
-            "SimdWholeRegisterLoad", "SimdWholeRegisterStore"
+            'FloatMemRead', 'FloatMemWrite', 
+            'SimdUnitStrideLoad', 'SimdUnitStrideStore',
+            'SimdUnitStrideMaskLoad', 'SimdUnitStrideMaskStore',
+            'SimdUnitStrideFaultOnlyFirstLoad', 
+            'SimdWholeRegisterLoad', 'SimdWholeRegisterStore'
         ]
         vec_mem_fast = MinorFU()
         vec_mem_fast.opClasses = minorMakeOpClassSet(vec_mem_fast_ops)
-        vec_mem_fast.timings = [MinorFUTiming(description="VecMemFast", srcRegsRelativeLats=[1], extraAssumedLat=2)] 
+        vec_mem_fast.timings = [MinorFUTiming(description='VecMemFast', srcRegsRelativeLats=[1], extraAssumedLat=2)] 
         vec_mem_fast.opLat = 2
         vec_mem_fast.issueLat = 1
 
         vec_mem_slow_ops = [
-            "SimdStridedLoad", "SimdStridedStore", 
-            "SimdIndexedLoad", "SimdIndexedStore"
+            'SimdStridedLoad', 'SimdStridedStore', 
+            'SimdIndexedLoad', 'SimdIndexedStore'
         ]
         vec_mem_slow = MinorFU()
         vec_mem_slow.opClasses = minorMakeOpClassSet(vec_mem_slow_ops)
-        vec_mem_slow.timings = [MinorFUTiming(description="VecMemSlow", srcRegsRelativeLats=[1], extraAssumedLat=2)] 
+        vec_mem_slow.timings = [MinorFUTiming(description='VecMemSlow', srcRegsRelativeLats=[1], extraAssumedLat=2)] 
         vec_mem_slow.opLat = 10
         vec_mem_slow.issueLat = 4
 
         misc = MinorDefaultMiscFU()
-        misc.opClasses = minorMakeOpClassSet(["InstPrefetch"])
+        misc.opClasses = minorMakeOpClassSet(['InstPrefetch'])
         misc.opLat = 1
         misc.issueLat = 1
 
         self.funcUnits = [
-            int_alu, int_mul, int_div, fp_fast, fp_cvt, 
+            int_alu, int_mul, int_div, fp_fast_A, fp_fast_B,
             fp_sqrt, fp_div, fp_cmp, mem_fu, simd_int_fast, 
             simd_complex, simd_matrix, simd_div_sqrt,  pred, 
             vec_mem_fast, vec_mem_slow, misc,
@@ -288,6 +289,7 @@ class CacheHierarchy(PrivateL1CacheHierarchy):
             self.l1dcaches[i].is_read_only = False
             self.l1dcaches[i].sequential_access = False
             self.l1dcaches[i].writeback_clean = False
+            self.l1dcaches[i].prefetcher = NULL
 
 # -------------------------------------------------------------------------
 # Script Principal
