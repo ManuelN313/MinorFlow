@@ -15,6 +15,8 @@ Usage:
     python3 minorflow_tracer.py trace.txt           # writes trace.json
     python3 minorflow_tracer.py trace.txt --stats    # also print a summary
 """
+import time
+import os
 import sys
 import re
 import json
@@ -23,40 +25,47 @@ import argparse
 # ==============================================================================
 # Regexes (identical patterns to the JS parser)
 # ==============================================================================
-RE_TICK      = re.compile(r'^\s*(\d+):')
-RE_BP        = re.compile(
+RE_TICK = re.compile(r'^\s*(\d+):')
+RE_BP = re.compile(
     r'branchPred:\s+(local predictor size|local counter bits|global predictor '
     r'size|global counter bits|choice predictor size|choice counter bits|'
     r'instruction shift amount|index mask|BTB entries|RAS size):\s+(\S+)')
 RE_MINORLINE = re.compile(
     r'fetch1: MinorLine: id=\S+/\S+/(\d+)\s+size=(\d+)\s+vaddr=0x([0-9a-f]+)')
-RE_FETCHREQ  = re.compile(r'fetch1: Issued fetch request to memory: (\S+)')
-RE_ID_LINE   = re.compile(r'\d+/\S+/(\d+)')                       # -> lineSeq
-RE_ID_FULL   = re.compile(r'(\d+)/\S+/(\d+)/(\d+)\.\d+')          # -> tid,line,fseq
-RE_ID_F2     = re.compile(r'(\d+)/\S+/(\d+)/(\d+)')               # decoder/passing (no .exec)
-RE_ICACHE    = re.compile(r'l1icaches: access for \w+ \[[0-9a-f]+:[0-9a-f]+\] IF (miss|hit)')
-RE_DCACHE    = re.compile(r'l1dcaches: access for (\w+) \[[0-9a-f]+:[0-9a-f]+\] (miss|hit)')
-RE_LSQ       = re.compile(r'lsq: Setting state from (\w+) to (\w+) for request: (\S+) pc:')
-RE_SBCONS    = re.compile(r'storeBuffer: Considering request: (\S+) pc:')
-RE_SBDEL     = re.compile(r'storeBuffer: Deleting request:.*?(\d+/\S+/\d+/(\d+)\.\d+)')
-RE_F2DEC     = re.compile(r'fetch2: decoder inst (\S+) pc:')
+RE_FETCHREQ = re.compile(r'fetch1: Issued fetch request to memory: (\S+)')
+RE_ID_LINE = re.compile(r'\d+/\S+/(\d+)')                       # -> lineSeq
+# -> tid,line,fseq
+RE_ID_FULL = re.compile(r'(\d+)/\S+/(\d+)/(\d+)\.\d+')
+# decoder/passing (no .exec)
+RE_ID_F2 = re.compile(r'(\d+)/\S+/(\d+)/(\d+)')
+RE_ICACHE = re.compile(
+    r'l1icaches: access for \w+ \[[0-9a-f]+:[0-9a-f]+\] IF (miss|hit)')
+RE_DCACHE = re.compile(
+    r'l1dcaches: access for (\w+) \[[0-9a-f]+:[0-9a-f]+\] (miss|hit)')
+RE_LSQ = re.compile(
+    r'lsq: Setting state from (\w+) to (\w+) for request: (\S+) pc:')
+RE_SBCONS = re.compile(r'storeBuffer: Considering request: (\S+) pc:')
+RE_SBDEL = re.compile(
+    r'storeBuffer: Deleting request:.*?(\d+/\S+/\d+/(\d+)\.\d+)')
+RE_F2DEC = re.compile(r'fetch2: decoder inst (\S+) pc:')
 RE_MINORINST = re.compile(
     r'execute: MinorInst: id=\d+/\S+/(\d+)/(\d+)\.\d+\s+addr=(0x[0-9a-f]+)\s+'
     r'inst="([^"]+)"\s+class=(\w+)\s+flags="([^"]*)"\s+srcRegs=([^ ]*)\s+destRegs=([^ ]*)')
-RE_SCOREBOARD = re.compile(r'scoreboard\d+: Marking up inst:\s+(\S+).*returnCycle:\s*(\d+)')
-RE_PASSING   = re.compile(r'decode: Passing on inst:\s+(\S+)\s+pc:\s+\S+\s+\([^)]+\)')
-RE_TRYING    = re.compile(r'Trying to issue inst:\s+(\S+)\s+pc:\s+(\S+)\s+\(([^)]+)\)\s+to FU:\s*(\d+)')
-RE_ISSUING   = re.compile(r'Issuing inst:\s+(\S+)\s+pc:\s+(\S+)\s+\(([^)]+)\)\s+into FU (\d+)')
-RE_BRANCH    = re.compile(r'Changing stream on branch: (\w+) target: (\S+) (\S+) pc:')
-RE_DISCARD   = re.compile(r'execute: Discarding inst: (\S+) pc:')
-RE_COMMIT    = re.compile(
+RE_SCOREBOARD = re.compile(
+    r'scoreboard\d+: Marking up inst:\s+(\S+).*returnCycle:\s*(\d+)')
+RE_PASSING = re.compile(
+    r'decode: Passing on inst:\s+(\S+)\s+pc:\s+\S+\s+\([^)]+\)')
+RE_TRYING = re.compile(
+    r'Trying to issue inst:\s+(\S+)\s+pc:\s+(\S+)\s+\(([^)]+)\)\s+to FU:\s*(\d+)')
+RE_ISSUING = re.compile(
+    r'Issuing inst:\s+(\S+)\s+pc:\s+(\S+)\s+\(([^)]+)\)\s+into FU (\d+)')
+RE_BRANCH = re.compile(
+    r'Changing stream on branch: (\w+) target: (\S+) (\S+) pc:')
+RE_DISCARD = re.compile(r'execute: Discarding inst: (\S+) pc:')
+RE_COMMIT = re.compile(
     r'T0\s+:\s+(0x[0-9a-f]+)\s+@\S+\s+:\s+(.+?)\s+:\s+(\w+)(?:.*?FetchSeq=(\d+))?')
 
 RE_COMPRESSED = re.compile(r'^c[_.]')
-
-
-import os
-import time
 
 
 class Progress:
@@ -66,6 +75,7 @@ class Progress:
     on a single rewritten line, so a long parse visibly advances instead of
     looking hung. Updates are throttled to a few times per second.
     """
+
     def __init__(self, label, total_bytes=0, enabled=True):
         self.label = label
         self.total_bytes = total_bytes
@@ -216,18 +226,19 @@ def parse(line_source, tpc, progress=None, total_bytes=0):
     fetch1_vaddr = {}   # lineSeq -> vaddr base
     fetch2_map = {}     # fetchSeq -> cycle of "decoder inst"
     decode_map = {}     # fetchSeq -> cycle of "Passing on inst"
-    execute_map = {}    # fetchSeq -> {cycle, lineSeq, pc, instr, fu, flags, src, dest, predictedTaken}
+    # fetchSeq -> {cycle, lineSeq, pc, instr, fu, flags, src, dest, predictedTaken}
+    execute_map = {}
     issue_first = {}    # fetchSeq -> first "Trying to issue" cycle
     issue_ok = {}       # fetchSeq -> "Issuing inst" cycle
     issue_fu = {}       # fetchSeq -> FU index
-    scoreboard_map = {} # fetchSeq -> returnCycle
+    scoreboard_map = {}  # fetchSeq -> returnCycle
     branch_events = {}  # fetchSeq -> [{cycle, type, target}, ...]
     discard_map = {}    # fetchSeq -> discard cycle
     lsq_events = {}     # fetchSeq -> {pushCycle, issueCycle, completeCycle, isStore}
-    storebuf_events = {}# fetchSeq -> {pushCycle, deleteCycle}
+    storebuf_events = {}  # fetchSeq -> {pushCycle, deleteCycle}
     ic_miss_cycles = set()
     ic_hit_cycles = set()
-    dcache_by_cycle = {}# cycle -> {miss, isWrite}
+    dcache_by_cycle = {}  # cycle -> {miss, isWrite}
     commit_list = []    # {cycle, pc, instr, fu, fetchSeq}
     observed_line_size = [None]   # boxed so inner assignment is visible
     branch_pred_info = {}
@@ -311,7 +322,8 @@ def parse(line_source, tpc, progress=None, total_bytes=0):
             if mm:
                 fseq = int(mm.group(3))
                 if fseq not in storebuf_events:
-                    storebuf_events[fseq] = {'pushCycle': cycle, 'deleteCycle': None}
+                    storebuf_events[fseq] = {
+                        'pushCycle': cycle, 'deleteCycle': None}
             continue
 
         m = RE_SBDEL.search(l)
@@ -465,7 +477,8 @@ def parse(line_source, tpc, progress=None, total_bytes=0):
         dec_est = (f2_final + pipe_f2dec) if f2_final is not None else None
         dec_fin = dec_real if dec_real is not None else dec_est
 
-        base = try_c if try_c is not None else (iss_c if iss_c is not None else ex['cycle'])
+        base = try_c if try_c is not None else (
+            iss_c if iss_c is not None else ex['cycle'])
         dec_f = dec_fin if dec_fin is not None else (base - pipe_dec_ex)
         f2_f = f2_final if f2_final is not None else (dec_f - pipe_f2dec)
         f1_f = f1c if f1c is not None else (f2_f - pipe_f1f2)
@@ -499,7 +512,8 @@ def parse(line_source, tpc, progress=None, total_bytes=0):
                 and lsq_evt.get('completeCycle') is not None):
             fu_done = lsq_evt['completeCycle']
         else:
-            fu_done = ret_cyc if ret_cyc is not None else (cmc if cmc is not None else ex_fu + 1)
+            fu_done = ret_cyc if ret_cyc is not None else (
+                cmc if cmc is not None else ex_fu + 1)
 
         # ---- Line-wrap detection (32-bit inst straddling a cache line) ------
         wraps_line = False
@@ -533,11 +547,13 @@ def parse(line_source, tpc, progress=None, total_bytes=0):
                             icMissA = prev_req in ic_miss_cycles
                             f1reqB = curr_req
                             f1respB = curr_resp
-                            icMissB = (curr_req in ic_miss_cycles) if curr_req is not None else None
+                            icMissB = (
+                                curr_req in ic_miss_cycles) if curr_req is not None else None
 
         # fetchReqCyc / icMiss (aggregate, with wrap override)
         fetch_req_cyc = fetch1_req.get(ex['lineSeq'])
-        ic_miss = (fetch_req_cyc in ic_miss_cycles) if fetch_req_cyc is not None else None
+        ic_miss = (
+            fetch_req_cyc in ic_miss_cycles) if fetch_req_cyc is not None else None
         if wraps_line:
             fetch_req_cyc = f1reqA
             if icMissA or icMissB:
@@ -568,7 +584,8 @@ def parse(line_source, tpc, progress=None, total_bytes=0):
             else:
                 branch_kind = None
 
-        is_cond_correct_nt = (not is_discarded) and is_ctrl and is_cond and br_type is None
+        is_cond_correct_nt = (
+            not is_discarded) and is_ctrl and is_cond and br_type is None
 
         if is_discarded or not is_ctrl:
             branch_outcome = None
@@ -649,7 +666,8 @@ def parse(line_source, tpc, progress=None, total_bytes=0):
     if has_minor_execute[0] and records:
         enrich_by_pc = {}
         for cm in commit_list:
-            enrich_by_pc.setdefault(cm['pc'], []).append({'instr': cm['instr'], 'fu': cm['fu']})
+            enrich_by_pc.setdefault(cm['pc'], []).append(
+                {'instr': cm['instr'], 'fu': cm['fu']})
         enrich_used = {}
         for rec in records:
             lst = enrich_by_pc.get(rec['pc'], [])
@@ -657,7 +675,8 @@ def parse(line_source, tpc, progress=None, total_bytes=0):
             if ui < len(lst):
                 rec['instr'] = lst[ui]['instr']
                 rec['fu'] = lst[ui]['fu']
-                rec['compressed'] = bool(RE_COMPRESSED.match(rec['instr'] or ''))
+                rec['compressed'] = bool(
+                    RE_COMPRESSED.match(rec['instr'] or ''))
                 enrich_used[rec['pc']] = ui + 1
 
     ic_access_cycles = sorted(ic_hit_cycles | ic_miss_cycles)
@@ -672,10 +691,14 @@ def parse(line_source, tpc, progress=None, total_bytes=0):
     # writeback can share the cycle, so keep them all. Emit one cycle entry per
     # access (with multiplicity) so the viewer, which counts entries inside the
     # window, reports the true access and miss totals.
-    dc_access_cycles = sorted(c for c, evs in dcache_by_cycle.items() for _ in evs)
-    dc_miss_cycles = sorted(c for c, evs in dcache_by_cycle.items() for e in evs if e['miss'])
-    dc_store_access_cycles = sorted(c for c, evs in dcache_by_cycle.items() for e in evs if e['isWrite'])
-    dc_store_miss_cycles = sorted(c for c, evs in dcache_by_cycle.items() for e in evs if e['miss'] and e['isWrite'])
+    dc_access_cycles = sorted(
+        c for c, evs in dcache_by_cycle.items() for _ in evs)
+    dc_miss_cycles = sorted(c for c, evs in dcache_by_cycle.items()
+                            for e in evs if e['miss'])
+    dc_store_access_cycles = sorted(
+        c for c, evs in dcache_by_cycle.items() for e in evs if e['isWrite'])
+    dc_store_miss_cycles = sorted(c for c, evs in dcache_by_cycle.items(
+    ) for e in evs if e['miss'] and e['isWrite'])
 
     return {
         'metadata': {
@@ -754,10 +777,14 @@ def parse_file(path, show_progress=True):
 def main():
     ap = argparse.ArgumentParser(
         description='Parse a gem5 MinorCPU debug trace into MinorFlow JSON.')
-    ap.add_argument('trace', help='Path to the gem5 MinorCPU debug trace (.txt/.log)')
-    ap.add_argument('-o', '--out', help='Output JSON path (default: <trace>.json)')
-    ap.add_argument('--stats', action='store_true', help='Print a short summary')
-    ap.add_argument('--quiet', action='store_true', help='Suppress progress output')
+    ap.add_argument(
+        'trace', help='Path to the gem5 MinorCPU debug trace (.txt/.log)')
+    ap.add_argument(
+        '-o', '--out', help='Output JSON path (default: <trace>.json)')
+    ap.add_argument('--stats', action='store_true',
+                    help='Print a short summary')
+    ap.add_argument('--quiet', action='store_true',
+                    help='Suppress progress output')
     args = ap.parse_args()
 
     if not os.path.isfile(args.trace):
@@ -806,7 +833,8 @@ def main():
 
     if args.stats:
         recs = data['instructions']
-        committed = sum(1 for r in recs if not r['flushed'] and r['cm'] is not None)
+        committed = sum(
+            1 for r in recs if not r['flushed'] and r['cm'] is not None)
         flushed = sum(1 for r in recs if r['flushed'])
         print(f"[STATS] committed={committed} flushed={flushed} "
               f"ic_access={len(data['ic_events']['access_cycles'])} "
