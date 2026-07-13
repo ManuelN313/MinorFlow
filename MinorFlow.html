@@ -951,20 +951,19 @@
     <span title="Instructions whose fetch spanned two cache lines in this window.">Wrap: <span class="hi"
         id="s-wrp">-</span></span>
     <span
-      title="ICache misses in the visible fetch-range window: the main number counts miss cycles the window spans (matching gem5 overallMisses), including speculative fetches and, with the FE-stall toggle on, fe-wait cycles. The parenthesised number, when shown, is the smaller non-speculative subset tied to instruction records. On a small range the main number can read higher than that subset.">IC✗<sup
+      title="ICache miss cycles in the visible window, matching gem5 overallMisses. The number in parentheses, when shown, is the subset from instruction records.">IC✗<sup
         style="font-size:.7em;opacity:.55" title="cycle-window scoped">cyc</sup>: <span class="hi"
         id="s-icm">-</span></span>
     <span
-      title="Data-cache misses in the visible fetch-range window, deduped by issue cycle. A cycle-window count matching gem5 stats, so it includes any recordless or speculative misses the window spans. The figure in parentheses, when shown, is the subset caused by the listed instructions (records that missed), split into loads and stores, smaller than the window count on a small range.">DC✗<sup
+      title="Data-cache miss cycles in the visible window, matching gem5 stats. The number in parentheses is the load and store split, which sums to the total.">DC✗<sup
         style="font-size:.7em;opacity:.55" title="cycle-window scoped">cyc</sup>: <span class="hi"
         id="s-dcm">-</span></span>
     <span
-      title="ICache accesses in the visible fetch-range window: the main number is the count of access cycles the window spans (matching gem5 l1icaches accesses), including speculative fetches and, with the FE-stall toggle on, fe-wait cycles. The parenthesised number, when shown, is the smaller subset of distinct fetch-request cycles tied to instruction records.">I$
+      title="ICache access cycles in the visible window (gem5 l1icaches accesses). The number in parentheses, when shown, is the record subset.">I$
       acc<sup style="font-size:.7em;opacity:.55" title="cycle-window scoped">cyc</sup>: <span class="hi"
         id="s-ica">-</span></span>
-    <span
-      title="Data-cache accesses in the visible fetch-range window: access cycles the window spans, split into loads and stores. A cycle-window count, so on a small range it can exceed the load plus store instruction count. Older traces without the access-cycle arrays fall back to one count per load and per store.">D$
-      acc<sup style="font-size:.7em;opacity:.55" title="cycle-window scoped">cyc</sup>: <span class="hi"
+    <span title="Data-cache access cycles in the visible window, split into loads and stores.">D$ acc<sup
+        style="font-size:.7em;opacity:.55" title="cycle-window scoped">cyc</sup>: <span class="hi"
         id="s-dca">-</span></span>
     <span
       title="Control instructions in this window, committed and flushed alike. The number in parentheses, when shown, is the non-speculative subset (committed only).">Branches:
@@ -3670,10 +3669,18 @@
        * share the span, not only the accesses of the listed instructions. The
        * record-anchored count (distinct missing fetch requests of the visible
        * instructions) stays in parentheses. */
+      /* At full coverage (no fetch-range filter) count every loaded cache cycle,
+       * so the status bar matches the config panel and gem5 whole-run stats and
+       * does not drop trailing wind-down miss or access cycles that fall past the
+       * last committed instruction pipeline cycles. A fetch-range filter keeps the
+       * cycle-window scoping. */
+      const fullWindow = allInstrs.length > 0 && vis.length === allInstrs.length;
       const icMiss = icMissSet.size;
-      const icMissRaw = icMissCyclesArr.filter(c => c >= loFull + cycleOffset && c <= cMaxEvent + cycleOffset).length;
+      const icMissRaw = fullWindow ? icMissCyclesArr.length
+        : icMissCyclesArr.filter(c => c >= loFull + cycleOffset && c <= cMaxEvent + cycleOffset).length;
       const icAcc = fetchReqSet.size;
-      const icAccRaw = icAccessCycles.filter(c => c >= loFull + cycleOffset && c <= cMaxEvent + cycleOffset).length;
+      const icAccRaw = fullWindow ? icAccessCycles.length
+        : icAccessCycles.filter(c => c >= loFull + cycleOffset && c <= cMaxEvent + cycleOffset).length;
 
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       const fmt = n => (typeof n === 'number' && Number.isFinite(n)) ? n.toLocaleString() : String(n);
@@ -3693,8 +3700,10 @@
          * cMaxEvent: a store retires its write to the cache AFTER commit, so its
          * access cycle lands past cm. cMaxEvent stops at cm and would drop every
          * store writeback. cMax reaches the trailing memory cells and keeps them. */
-        const dcAccW = dcAccessCycles.filter(c => c >= loFull + cycleOffset && c <= cMax + cycleOffset).length;
-        const dcAccSW = dcStoreAccessCyclesArr.filter(c => c >= loFull + cycleOffset && c <= cMax + cycleOffset).length;
+        const dcAccW = fullWindow ? dcAccessCycles.length
+          : dcAccessCycles.filter(c => c >= loFull + cycleOffset && c <= cMax + cycleOffset).length;
+        const dcAccSW = fullWindow ? dcStoreAccessCyclesArr.length
+          : dcStoreAccessCyclesArr.filter(c => c >= loFull + cycleOffset && c <= cMax + cycleOffset).length;
         set('s-dca', `${fmt(dcAccW)} (${fmt(Math.max(0, dcAccW - dcAccSW))} ld, ${fmt(dcAccSW)} st)`);
       } else {
         set('s-dca', `${fmt(nLoads + nStores)} (${fmt(nLoads)} ld, ${fmt(nStores)} st)`);
@@ -3704,11 +3713,13 @@
       set('s-stall-data', fmt(stallData));
       set('s-stall-dmem', fmt(stallDMem));
       set('s-stall', `${fmt(stall)} (${stallPct}%)`);
-      set('s-icm', icMiss !== icMissRaw ? `${fmt(icMissRaw)} (${fmt(icMiss)} from records)` : fmt(icMissRaw));
+      set('s-icm', icMiss < icMissRaw ? `${fmt(icMissRaw)} (${fmt(icMiss)} from records)` : fmt(icMissRaw));
       if (dcEventsPresent) {
-        const dcMissW = dcMissCyclesArr.filter(c => c >= loFull + cycleOffset && c <= cMax + cycleOffset).length;
-        const dcMissRec = dcLoad + dcStore;   // record-anchored subset: visible loads and stores that missed
-        set('s-dcm', dcMissRec !== dcMissW ? `${fmt(dcMissW)} (${fmt(dcLoad)} ld, ${fmt(dcStore)} st from records)` : fmt(dcMissW));
+        const dcMissW = fullWindow ? dcMissCyclesArr.length
+          : dcMissCyclesArr.filter(c => c >= loFull + cycleOffset && c <= cMax + cycleOffset).length;
+        const dcMissSW = fullWindow ? dcStoreMissCyclesArr.length
+          : dcStoreMissCyclesArr.filter(c => c >= loFull + cycleOffset && c <= cMax + cycleOffset).length;
+        set('s-dcm', `${fmt(dcMissW)} (${fmt(Math.max(0, dcMissW - dcMissSW))} ld, ${fmt(dcMissSW)} st)`);
       } else {
         set('s-dcm', `${fmt(dcLoad + dcStore)} (${fmt(dcLoad)} ld, ${fmt(dcStore)} st)`);
       }
