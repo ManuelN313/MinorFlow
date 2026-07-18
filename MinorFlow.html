@@ -339,9 +339,7 @@
       outline: none;
     }
 
-    #scroller-inner {
-      /* dimensions assigned by setupScrollers() */
-    }
+    /* #scroller-inner dimensions are assigned by setupScrollers() */
 
     #crosshair {
       position: absolute;
@@ -894,10 +892,14 @@
     onclick="document.getElementById('fi').click()">
     <h2>Drag a MinorFlow JSON here, or click to browse</h2>
     <p style="font-size:11px">Generate it from a gem5 trace with:
-      <code>python3 MinorFlow_tracer.py trace.txt -o trace.json</code></p>
+      <code>python3 MinorFlow_tracer.py trace.txt -o trace.json</code>
+    </p>
     <p style="font-size:10px;margin-top:4px;color:var(--text3)">Recommended gem5 flags when capturing the trace:
       --debug-flags=Minor,MinorTrace,MinorTiming,CacheAll,ExecAll,Fetch,Decode,IEW,Commit,LSQ,Scoreboard,Writeback</p>
     <p style="font-size:10px;margin-top:4px">Keys: + / − to zoom · arrows to navigate · Home/End to jump</p>
+    <button id="load-sample-btn" onclick="event.stopPropagation(); loadSample()"
+      style="margin-top:18px;padding:8px 18px;font-size:12px;font-weight:600;cursor:pointer;color:#fff;background:#1f6feb;border:0;border-radius:6px">Load
+      sample trace (DAXPY)</button>
   </div>
 
   <!-- ═══════════════════════════════ MAIN VIEW ══════════════════════════════ -->
@@ -1949,6 +1951,52 @@
         }));
       };
       r.readAsText(f);
+    }
+
+    /* Load a bundled sample trace so the demo works with one click, no build
+     * required. Two paths, so it works in both contexts:
+     *   - served (for example GitHub Pages): fetch the JSON directly.
+     *   - opened locally from a file:// URL: browsers block fetch of local
+     *     files, so fall back to a <script> tag, which is not subject to that
+     *     restriction and loads relative to this page's own location. That
+     *     script assigns the same object to window.__SAMPLE_TRACE__.
+     * Both paths resolve relative to where this HTML file sits. */
+    const SAMPLE_URL = 'tests/daxpy.config1.json';
+    const SAMPLE_URL_JS = 'tests/daxpy.config1.js';
+
+    function loadSample() {
+      showLoading('loading sample\u2026');
+      fetch(SAMPLE_URL)
+        .then(resp => { if (!resp.ok) throw new Error('http ' + resp.status); return resp.json(); })
+        .then(finishSample)
+        .catch(() => loadSampleViaScript());
+    }
+
+    function loadSampleViaScript() {
+      const s = document.createElement('script');
+      s.src = SAMPLE_URL_JS;
+      s.onload = () => {
+        const data = window.__SAMPLE_TRACE__;
+        try { delete window.__SAMPLE_TRACE__; } catch (e) { window.__SAMPLE_TRACE__ = undefined; }
+        s.remove();
+        if (!data) { hideLoading(); alert('The sample file loaded but did not set window.__SAMPLE_TRACE__. Check "' + SAMPLE_URL_JS + '".'); return; }
+        finishSample(data);
+      };
+      s.onerror = () => {
+        s.remove();
+        hideLoading();
+        alert('Could not load the sample trace.\n\nLooked for "' + SAMPLE_URL + '" (served) and "' + SAMPLE_URL_JS + '" (local), relative to this page.\n\nMake sure the sample is present next to this file, or drag a trace onto the window instead.');
+      };
+      document.head.appendChild(s);
+    }
+
+    function finishSample(data) {
+      const err = validateMinorflowJson(data);
+      if (err) { hideLoading(); alert('The sample trace could not be loaded: ' + err); return; }
+      loadFromJson(data);
+      const tn = document.getElementById('tracename');
+      if (tn) { tn.textContent = 'DAXPY config1 (sample)'; tn.title = SAMPLE_URL; }
+      hideLoading();
     }
 
     /* Shape check for the parser output. Returns an error string, or null if OK. */
