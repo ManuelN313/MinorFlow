@@ -1,6 +1,6 @@
 # MinorFlow
 
-A browser-based pipeline visualiser for gem5's MinorCPU. It reconstructs the pipeline cycle by cycle from a gem5 debug trace and draws every instruction as a row, so you can see exactly where cycles are being lost.
+A browser-based pipeline visualizer for gem5's MinorCPU. It reconstructs the pipeline cycle by cycle from a gem5 debug trace and draws every instruction as a row, so you can see exactly where cycles are being lost.
 
 ![MinorFlow rendering the MinorCPU pipeline](docs/MinorFlow_intro.png)
 
